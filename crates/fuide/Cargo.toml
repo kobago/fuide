@@ -1,6 +1,6 @@
 [package]
 name = "fuide"
-description = "Futuristic UI (FUI) theme, window shell and instrument widgets for egui"
+description = "FUI Develop Environment: Futuristic UI theme, window shell, dialogs and instrument widgets for egui"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

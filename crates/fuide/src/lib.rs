@@ -1,4 +1,4 @@
-//! fuide — Futuristic UI (FUI) building blocks for egui 0.36.
+//! fuide — FUI Develop Environment: Futuristic UI (FUI) building blocks for egui 0.36.
 //!
 //! Grammar: dark translucent ground + one glowing accent + thin lines + constant subtle motion.
 //! - [`theme`]: palettes (CYAN / AMBER / GREEN), fonts (Orbitron display, Share Tech Mono data), style install
