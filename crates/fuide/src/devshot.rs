@@ -1,5 +1,6 @@
 //! Dev aid shared by all tools: `FUIDE_SCREENSHOT=/path/out.tga cargo run` captures the window after
-//! a short warm-up (`FUIDE_SCREENSHOT_FRAME`, default 45) and exits. Convert with `sips -s format png`. Written as uncompressed TGA (no extra deps); convert with `sips -s format png`.
+//! a short warm-up (`FUIDE_SCREENSHOT_FRAME`, default 45) and exits. Convert with `sips -s format png`.
+//! `FUIDE_DEV_FRAMELOG=1` prints `frame N t=…` to stderr every 30 frames (repaint-rate checks). Written as uncompressed TGA (no extra deps); convert with `sips -s format png`.
 
 use std::path::PathBuf;
 
@@ -8,6 +9,7 @@ pub struct DevShot {
     frames: u32,
     at: u32,
     requested: bool,
+    framelog: bool,
 }
 
 impl DevShot {
@@ -20,15 +22,19 @@ impl DevShot {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(45),
             requested: false,
+            framelog: std::env::var_os("FUIDE_DEV_FRAMELOG").is_some(),
         }
     }
 
     /// Call once per frame from `App::ui`.
     pub fn tick(&mut self, ctx: &egui::Context) {
+        self.frames += 1;
+        if self.framelog && self.frames % 30 == 0 {
+            eprintln!("frame {} t={:.2}", self.frames, ctx.input(|i| i.time));
+        }
         let Some(path) = self.path.clone() else {
             return;
         };
-        self.frames += 1;
         if self.frames == self.at && !self.requested {
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
