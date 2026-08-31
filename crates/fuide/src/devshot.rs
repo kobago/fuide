@@ -10,6 +10,10 @@ pub struct DevShot {
     at: u32,
     requested: bool,
     framelog: bool,
+    /// `FUIDE_DEV_RESIZE_AT=<frame>`: send `InnerSize` (+400 px wide) at that frame and log when the
+    /// new size reaches `ui()` — separates event/repaint latency from presentation latency.
+    resize_at: Option<u32>,
+    resize_sent: Option<(f64, f32)>,
 }
 
 impl DevShot {
@@ -23,6 +27,8 @@ impl DevShot {
                 .unwrap_or(45),
             requested: false,
             framelog: std::env::var_os("FUIDE_DEV_FRAMELOG").is_some(),
+            resize_at: std::env::var("FUIDE_DEV_RESIZE_AT").ok().and_then(|v| v.parse().ok()),
+            resize_sent: None,
         }
     }
 
@@ -31,6 +37,32 @@ impl DevShot {
         self.frames += 1;
         if self.framelog && self.frames.is_multiple_of(30) {
             eprintln!("frame {} t={:.2}", self.frames, ctx.input(|i| i.time));
+        }
+        let (t, size) = ctx.input(|i| {
+            (
+                i.time,
+                i.viewport().inner_rect.map(|r| r.width()).unwrap_or(0.0),
+            )
+        });
+        if self.resize_at == Some(self.frames) {
+            let target = size + 400.0;
+            let h = ctx
+                .input(|i| i.viewport().inner_rect.map(|r| r.height()))
+                .unwrap_or(800.0);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(target, h)));
+            self.resize_sent = Some((t, size));
+            eprintln!("resize: requested {size:.0} -> {target:.0} at frame {} t={t:.4}", self.frames);
+        } else if let Some((t0, w0)) = self.resize_sent {
+            if (size - w0).abs() > 1.0 {
+                eprintln!(
+                    "resize: ui() sees {size:.0} at frame {} t={t:.4} (+{:.1} ms)",
+                    self.frames,
+                    (t - t0) * 1000.0
+                );
+                self.resize_sent = None;
+            } else {
+                eprintln!("resize: frame {} still {size:.0} (+{:.1} ms)", self.frames, (t - t0) * 1000.0);
+            }
         }
         let Some(path) = self.path.clone() else {
             return;
