@@ -11,6 +11,23 @@ use egui::{
 use crate::{fx, geom, theme, widgets};
 
 pub const TITLE_H: f32 = 40.0;
+/// Idle animation rate. Override with `FUIDE_IDLE_FPS` (0 = every frame, for comparison).
+pub const IDLE_FPS: u32 = 20;
+
+fn idle_repaint_interval() -> std::time::Duration {
+    static FPS: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    let fps = *FPS.get_or_init(|| {
+        std::env::var("FUIDE_IDLE_FPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(IDLE_FPS)
+    });
+    if fps == 0 {
+        std::time::Duration::ZERO
+    } else {
+        std::time::Duration::from_micros(1_000_000 / u64::from(fps))
+    }
+}
 /// Horizontal inset of the title/status bars from the body edge (square corners).
 pub const BAR_INSET: f32 = 14.0;
 
@@ -234,7 +251,10 @@ impl Shell {
             fx::scanlines(p, r);
         }
         resize_handles(ui, full);
-        ui.ctx().request_repaint(); // shell is always animating (pulse + band)
+        // The shell is always animating (pulse + band), but repainting every vsync makes macOS
+        // window managers (Rectangle) lag 200-500 ms on snap resizes — winit #3644. Idle animation
+        // at ~20 fps is indistinguishable for slow motion and keeps the event queue empty.
+        ui.ctx().request_repaint_after(idle_repaint_interval());
         out
     }
 }
