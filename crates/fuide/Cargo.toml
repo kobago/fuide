@@ -1,0 +1,9 @@
+[package]
+name = "fuide"
+description = "Futuristic UI (FUI) theme, window shell and instrument widgets for egui"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+egui = { workspace = true }

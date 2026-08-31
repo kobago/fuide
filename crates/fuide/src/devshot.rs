@@ -1,0 +1,64 @@
+//! Dev aid shared by all tools: `FUIDE_SCREENSHOT=/path/out.tga cargo run` captures the window after
+//! a short warm-up (`FUIDE_SCREENSHOT_FRAME`, default 45) and exits. Convert with `sips -s format png`. Written as uncompressed TGA (no extra deps); convert with `sips -s format png`.
+
+use std::path::PathBuf;
+
+pub struct DevShot {
+    path: Option<PathBuf>,
+    frames: u32,
+    at: u32,
+    requested: bool,
+}
+
+impl DevShot {
+    pub fn from_env() -> Self {
+        Self {
+            path: std::env::var_os("FUIDE_SCREENSHOT").map(PathBuf::from),
+            frames: 0,
+            at: std::env::var("FUIDE_SCREENSHOT_FRAME")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(45),
+            requested: false,
+        }
+    }
+
+    /// Call once per frame from `App::ui`.
+    pub fn tick(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.path.clone() else {
+            return;
+        };
+        self.frames += 1;
+        if self.frames == self.at && !self.requested {
+            self.requested = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
+        let image = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(img) = image {
+            match write_tga(&path, &img) {
+                Ok(()) => eprintln!("screenshot written: {}", path.display()),
+                Err(e) => eprintln!("screenshot failed: {e}"),
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
+fn write_tga(path: &std::path::Path, img: &egui::ColorImage) -> std::io::Result<()> {
+    let [w, h] = img.size;
+    let mut buf = Vec::with_capacity(18 + w * h * 4);
+    buf.extend_from_slice(&[0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    buf.extend_from_slice(&(w as u16).to_le_bytes());
+    buf.extend_from_slice(&(h as u16).to_le_bytes());
+    buf.push(32); // bpp
+    buf.push(0x28); // 8 alpha bits, top-left origin
+    for px in &img.pixels {
+        buf.extend_from_slice(&[px.b(), px.g(), px.r(), px.a()]);
+    }
+    std::fs::write(path, buf)
+}
