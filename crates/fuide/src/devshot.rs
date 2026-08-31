@@ -29,7 +29,7 @@ impl DevShot {
     /// Call once per frame from `App::ui`.
     pub fn tick(&mut self, ctx: &egui::Context) {
         self.frames += 1;
-        if self.framelog && self.frames % 30 == 0 {
+        if self.framelog && self.frames.is_multiple_of(30) {
             eprintln!("frame {} t={:.2}", self.frames, ctx.input(|i| i.time));
         }
         let Some(path) = self.path.clone() else {
