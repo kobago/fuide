@@ -146,6 +146,8 @@ pub enum Icon {
     Cross,
     /// Circular arrow (reload).
     Refresh,
+    /// Gear (settings): ring with radial teeth.
+    Settings,
 }
 
 /// Draw `icon` centred on `center`, fitting a `size` × `size` box, with `stroke`.
@@ -214,6 +216,16 @@ pub fn draw_icon(p: &Painter, center: Pos2, size: f32, icon: Icon, stroke: Strok
             let s = q * 0.9;
             p.line_segment([end, end - tangent * s + normal * s], stroke);
             p.line_segment([end, end - tangent * s - normal * s], stroke);
+        }
+        Icon::Settings => {
+            // ring + 8 radial teeth
+            let r = h * 0.55;
+            p.circle_stroke(c, r, stroke);
+            for i in 0..8 {
+                let a = (45.0 * i as f32).to_radians();
+                let d = vec2(a.cos(), a.sin());
+                p.line_segment([c + d * (r + 1.0), c + d * h], stroke);
+            }
         }
     }
 }

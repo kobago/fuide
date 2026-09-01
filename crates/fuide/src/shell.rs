@@ -8,6 +8,7 @@ use egui::{
     ViewportCommand,
 };
 
+use crate::widgets::Icon;
 use crate::{fx, geom, theme, widgets};
 
 pub const TITLE_H: f32 = 40.0;
@@ -42,6 +43,15 @@ pub struct Shell {
     subtitle: String,
     status_left: String,
     lamps: Vec<StatusLamp>,
+    tool_window: bool,
+    settings_button: bool,
+}
+
+/// What [`Shell::show_full`] hands back: the content closure's value plus title-bar clicks.
+pub struct ShellOutput<R> {
+    pub inner: R,
+    /// The gear button (see [`Shell::settings_button`]) was clicked this frame.
+    pub settings_clicked: bool,
 }
 
 impl Shell {
@@ -51,7 +61,23 @@ impl Shell {
             subtitle: String::new(),
             status_left: String::new(),
             lamps: Vec::new(),
+            tool_window: false,
+            settings_button: false,
         }
+    }
+
+    /// Small secondary window (settings, inspectors): only a close button, no resize handles,
+    /// and no idle animation (it repaints on input only, so it never competes with the main
+    /// window for frames). Use with a child viewport built with `with_resizable(false)`.
+    pub fn tool_window(mut self) -> Self {
+        self.tool_window = true;
+        self
+    }
+
+    /// Show a gear button left of the window buttons. Read the click via [`Shell::show_full`].
+    pub fn settings_button(mut self, show: bool) -> Self {
+        self.settings_button = show;
+        self
     }
 
     pub fn subtitle(mut self, s: impl Into<String>) -> Self {
@@ -76,6 +102,20 @@ impl Shell {
 
     /// Draw the shell over the whole root `ui` and run `add_contents` in the content area.
     pub fn show<R>(self, ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+        self.show_full(ui, add_contents).inner
+    }
+
+    /// Like [`Shell::show`] but also reports title-bar button clicks.
+    pub fn show_full<R>(
+        self,
+        ui: &mut Ui,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> ShellOutput<R> {
+        // Ids are salted with the viewport *and* the root `Ui` so a tool window drawn with its own
+        // shell never shares interaction state with the main window's shell — neither as a real
+        // child viewport nor when egui embeds it as a `Window` (`embed_viewports`, where both
+        // shells run in the same viewport).
+        let vp = ui.id().with(ui.ctx().viewport_id());
         let pal = theme::palette(ui.ctx());
         let chamfer = theme::corners(ui.ctx()).window;
         let ts = theme::type_scale(ui.ctx());
@@ -89,7 +129,11 @@ impl Shell {
             let p = ui.painter();
             let pts = geom::octagon(r, chamfer);
             geom::fill(p, pts.clone(), pal.bg_deep);
-            let pulse = 0.75 + 0.25 * (2.0 * t).sin() as f32;
+            let pulse = if self.tool_window {
+                0.85
+            } else {
+                0.75 + 0.25 * (2.0 * t).sin() as f32
+            };
             geom::glow_outline(p, &pts, pal.accent, 1.4, pulse);
         }
 
@@ -99,11 +143,15 @@ impl Shell {
             pos2(r.right() - inset, r.top() + 6.0 + TITLE_H),
         );
         // drag region first; buttons registered later win the overlap
-        let drag = ui.interact(bar, Id::new("fuide-shell-drag"), Sense::click_and_drag());
+        let drag = ui.interact(
+            bar,
+            Id::new(("fuide-shell-drag", vp)),
+            Sense::click_and_drag(),
+        );
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
         }
-        if drag.double_clicked() {
+        if drag.double_clicked() && !self.tool_window {
             let maxed = ui.input(|i| i.viewport().maximized.unwrap_or(false));
             ui.ctx()
                 .send_viewport_cmd(ViewportCommand::Maximized(!maxed));
@@ -136,19 +184,25 @@ impl Shell {
                 Stroke::new(1.0, pal.accent_dim),
             );
         }
-        // window buttons: close / max / min from the right
+        // window buttons: close / max / min from the right (tool windows: close only)
+        let mut settings_clicked = false;
         {
             let cy = bar.center().y;
             let mut cx = bar.right() - 10.0 - 15.0;
-            for (glyph, color) in [
-                (Glyph::Close, pal.danger),
-                (Glyph::Max, pal.accent),
-                (Glyph::Min, pal.accent),
-            ] {
+            let buttons: &[(Glyph, Color32)] = if self.tool_window {
+                &[(Glyph::Close, pal.danger)]
+            } else {
+                &[
+                    (Glyph::Close, pal.danger),
+                    (Glyph::Max, pal.accent),
+                    (Glyph::Min, pal.accent),
+                ]
+            };
+            for &(glyph, color) in buttons {
                 let brect = Rect::from_center_size(pos2(cx, cy), vec2(30.0, 26.0));
                 let resp = ui.interact(
                     brect,
-                    Id::new(("fuide-winbtn", glyph as u8)),
+                    Id::new(("fuide-winbtn", glyph as u8, vp)),
                     Sense::click(),
                 );
                 let p = ui.painter();
@@ -188,6 +242,32 @@ impl Shell {
                     }
                 }
                 cx -= 38.0;
+            }
+            if self.settings_button {
+                // gear, a step further from the window buttons so it does not read as one of them
+                cx -= 8.0;
+                let brect = Rect::from_center_size(pos2(cx, cy), vec2(30.0, 26.0));
+                let resp = ui.interact(
+                    brect,
+                    Id::new(("fuide-winbtn-settings", vp)),
+                    Sense::click(),
+                );
+                let p = ui.painter();
+                if resp.hovered() {
+                    p.rect_filled(
+                        brect,
+                        egui::CornerRadius::ZERO,
+                        pal.accent.gamma_multiply(0.22),
+                    );
+                }
+                widgets::draw_icon(
+                    p,
+                    brect.center(),
+                    13.0,
+                    Icon::Settings,
+                    Stroke::new(1.5, pal.accent),
+                );
+                settings_clicked = resp.clicked();
             }
         }
 
@@ -247,15 +327,25 @@ impl Shell {
         // ---- overlays + resize handles ----------------------------------------------------
         {
             let p = ui.painter();
-            fx::scan_band(p, r, t, pal.accent);
+            if !self.tool_window {
+                fx::scan_band(p, r, t, pal.accent);
+            }
             fx::scanlines(p, r);
         }
-        resize_handles(ui, full);
-        // The shell is always animating (pulse + band), but repainting every vsync makes macOS
-        // window managers (Rectangle) lag 200-500 ms on snap resizes — winit #3644. Idle animation
-        // at ~20 fps is indistinguishable for slow motion and keeps the event queue empty.
-        ui.ctx().request_repaint_after(idle_repaint_interval());
-        out
+        if !self.tool_window {
+            resize_handles(ui, full, vp);
+        }
+        if !self.tool_window {
+            // The shell is always animating (pulse + band), but repainting every vsync makes macOS
+            // window managers (Rectangle) lag 200-500 ms on snap resizes — winit #3644. Idle
+            // animation at ~20 fps is indistinguishable for slow motion and keeps the event queue
+            // empty. Tool windows do not animate at all: they repaint on input only.
+            ui.ctx().request_repaint_after(idle_repaint_interval());
+        }
+        ShellOutput {
+            inner: out,
+            settings_clicked,
+        }
     }
 }
 
@@ -266,7 +356,7 @@ enum Glyph {
     Min = 2,
 }
 
-fn resize_handles(ui: &mut Ui, rect: Rect) {
+fn resize_handles(ui: &mut Ui, rect: Rect, vp: Id) {
     let m = 7.0;
     let edges: [(RD, Rect, CursorIcon); 8] = [
         (
@@ -333,7 +423,11 @@ fn resize_handles(ui: &mut Ui, rect: Rect) {
         ),
     ];
     for (dir, hrect, icon) in edges {
-        let resp = ui.interact(hrect, Id::new(("fuide-resize", icon as u32)), Sense::drag());
+        let resp = ui.interact(
+            hrect,
+            Id::new(("fuide-resize", icon as u32, vp)),
+            Sense::drag(),
+        );
         if resp.hovered() || resp.dragged() {
             ui.ctx().set_cursor_icon(icon);
         }

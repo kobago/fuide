@@ -77,6 +77,49 @@ impl Default for Palette {
     }
 }
 
+/// The three built-in palettes by name. This is what settings files and the settings window
+/// deal in; [`PaletteKind::palette`] turns it into the concrete colours.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PaletteKind {
+    Cyan,
+    Amber,
+    Green,
+}
+
+impl PaletteKind {
+    pub const ALL: [Self; 3] = [Self::Cyan, Self::Amber, Self::Green];
+
+    /// Lower-case name used in settings files and logs (`cyan` / `amber` / `green`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Cyan => "cyan",
+            Self::Amber => "amber",
+            Self::Green => "green",
+        }
+    }
+
+    /// One-line description shown next to the name in the settings window.
+    pub fn blurb(self) -> &'static str {
+        match self {
+            Self::Cyan => "tactical console",
+            Self::Amber => "industrial / reactor",
+            Self::Green => "phosphor terminal",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
+    }
+
+    pub fn palette(self) -> Palette {
+        match self {
+            Self::Cyan => Palette::cyan(),
+            Self::Amber => Palette::amber(),
+            Self::Green => Palette::green(),
+        }
+    }
+}
+
 const PALETTE_ID: &str = "fuide::palette";
 const CORNERS_ID: &str = "fuide::corners";
 const TYPE_ID: &str = "fuide::type";

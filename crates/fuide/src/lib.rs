@@ -9,6 +9,8 @@
 //! - [`fx`]: scanlines, scan band
 //! - [`devshot`]: `FUIDE_SCREENSHOT` self-capture hook for visual checks
 //! - [`dialog`]: modal dialog (dimmed backdrop, chip title, glowing outline, button row)
+//! - [`settings`]: per-app theme settings (palette / corners / density) — a small config file
+//!   plus a settings window opened as a child viewport (`Cmd+,`)
 //! - [`fontmetrics`]: sfnt line metrics; baseline correction for fallback (CJK) fonts
 //! - [`fmt`]: telemetry formatting (`T+HH:MM:SS.s` uptime)
 //! - [`geom`]: polygons and glow strokes
@@ -22,6 +24,7 @@ pub mod fontmetrics;
 pub mod fx;
 pub mod geom;
 pub mod panel;
+pub mod settings;
 pub mod shell;
 pub mod table;
 pub mod theme;
@@ -29,8 +32,9 @@ pub mod widgets;
 
 pub use dialog::Dialog;
 pub use panel::Panel;
+pub use settings::{Settings, SettingsWindow};
 pub use shell::Shell;
 pub use theme::{
     corners, display, display_galley, display_text, mono, palette, type_scale, Corners, Palette,
-    TypeScale,
+    PaletteKind, TypeScale,
 };
