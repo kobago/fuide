@@ -28,13 +28,16 @@ use crate::{geom, widgets, Panel, Shell};
 
 /// Everything the settings window edits. Add fields here, in `Default`, `to_string`/`parse`
 /// and `apply`; the window draws one section per field.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     pub palette: PaletteKind,
     /// 45° chamfers on window / panels / tabs / buttons.
     pub chamfer: bool,
     /// Denser type scale ([`TypeScale::COMPACT`] instead of [`TypeScale::NORMAL`]).
     pub compact: bool,
+    /// Layout: height of the app's log panel in logical px, once the user has dragged the
+    /// divider (`None` = the app's default). Not shown in the settings window.
+    pub log_height: Option<f32>,
 }
 
 impl Default for Settings {
@@ -50,6 +53,7 @@ impl Settings {
             palette,
             chamfer: false,
             compact: false,
+            log_height: None,
         }
     }
 
@@ -155,6 +159,7 @@ impl Settings {
                 }
                 "chamfer" => s.chamfer = v == "true",
                 "compact" => s.compact = v == "true",
+                "log_height" => s.log_height = v.parse().ok().filter(|h: &f32| h.is_finite()),
                 _ => {}
             }
         }
@@ -167,7 +172,11 @@ impl std::fmt::Display for Settings {
         writeln!(f, "# FUIDE settings")?;
         writeln!(f, "palette={}", self.palette.name())?;
         writeln!(f, "chamfer={}", self.chamfer)?;
-        writeln!(f, "compact={}", self.compact)
+        writeln!(f, "compact={}", self.compact)?;
+        if let Some(h) = self.log_height {
+            writeln!(f, "log_height={h}")?;
+        }
+        Ok(())
     }
 }
 
@@ -372,8 +381,14 @@ mod tests {
             palette: PaletteKind::Amber,
             chamfer: true,
             compact: false,
+            log_height: Some(180.0),
         };
         assert_eq!(Settings::parse(&s.to_string()), s);
+        assert!(
+            !Settings::default().to_string().contains("log_height"),
+            "unset keys are omitted"
+        );
+        assert_eq!(Settings::parse("log_height=abc").log_height, None);
     }
 
     #[test]

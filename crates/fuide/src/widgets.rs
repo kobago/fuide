@@ -601,6 +601,52 @@ pub fn rule(ui: &mut Ui) {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Splitter
+
+/// Horizontal divider between two stacked regions: `strip` is the gap between them. Dragging it
+/// up grows `value` (the height of the region *below*), clamped to `min..=max`. Drawn as a short
+/// centred grip that brightens on hover; the cursor becomes a vertical resize arrow. `label` is
+/// the accessibility name (e.g. `LOG HEIGHT`). Read `drag_stopped()` to persist the value.
+pub fn h_splitter(
+    ui: &mut Ui,
+    strip: Rect,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    label: &str,
+) -> Response {
+    let pal = theme::palette(ui.ctx());
+    let max = max.max(min);
+    let resp = hit(ui, strip, ("h-splitter", salt), Sense::drag());
+    if resp.dragged() {
+        *value = (*value - resp.drag_delta().y).clamp(min, max);
+    }
+    *value = value.clamp(min, max);
+    resp.widget_info(|| WidgetInfo::slider(true, f64::from(*value), label));
+    if resp.hovered() || resp.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let a = if resp.dragged() {
+        1.0
+    } else if resp.hovered() {
+        0.7
+    } else {
+        0.3
+    };
+    let p = ui.painter();
+    let c = strip.center();
+    for dy in [-2.0, 2.0] {
+        p.hline(
+            (c.x - 18.0)..=(c.x + 18.0),
+            c.y + dy,
+            Stroke::new(1.0, pal.accent.gamma_multiply(a)),
+        );
+    }
+    resp
+}
+
 /// Register an invisible interact region (used by callers that need a Response over a painted area).
 pub fn hit(
     ui: &Ui,
