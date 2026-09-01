@@ -205,6 +205,9 @@ impl Shell {
                     Id::new(("fuide-winbtn", glyph as u8, vp)),
                     Sense::click(),
                 );
+                resp.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, glyph.label())
+                });
                 let p = ui.painter();
                 // glyph is always full-strength; hover only lights the background
                 if resp.hovered() {
@@ -252,6 +255,13 @@ impl Shell {
                     Id::new(("fuide-winbtn-settings", vp)),
                     Sense::click(),
                 );
+                resp.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Button,
+                        true,
+                        Icon::Settings.label(),
+                    )
+                });
                 let p = ui.painter();
                 if resp.hovered() {
                     p.rect_filled(
@@ -354,6 +364,16 @@ enum Glyph {
     Close = 0,
     Max = 1,
     Min = 2,
+}
+
+impl Glyph {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Close => "CLOSE WINDOW",
+            Self::Max => "MAXIMIZE",
+            Self::Min => "MINIMIZE",
+        }
+    }
 }
 
 fn resize_handles(ui: &mut Ui, rect: Rect, vp: Id) {

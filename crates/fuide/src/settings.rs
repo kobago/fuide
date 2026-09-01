@@ -16,7 +16,7 @@
 //! }
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use egui::{
@@ -76,15 +76,20 @@ impl Settings {
 
     // ---------------------------------------------------------------- persistence
 
-    /// Where `app_id`'s settings live. `FUIDE_CONFIG_DIR` overrides the directory (dev aid:
-    /// screenshots and tests must not touch the real file). Otherwise
-    /// `~/Library/Application Support/FUIDE/<app_id>.conf` on macOS,
+    /// Where `app_id`'s settings live on this platform. `FUIDE_CONFIG_DIR` overrides the
+    /// directory (dev aid: screenshots must not touch the real file). Otherwise
+    /// `~/Library/Application Support/FUIDE/<app_id>.conf` on macOS (and iOS, where `HOME` is the
+    /// app sandbox), `%APPDATA%\FUIDE\<app_id>.conf` on Windows,
     /// `$XDG_CONFIG_HOME/fuide/<app_id>.conf` (or `~/.config/fuide/…`) elsewhere.
+    /// `None` when none of those can be resolved (e.g. Android, where the app must pass its
+    /// own data directory to [`Settings::load_from`] / [`Settings::save_to`]).
     pub fn path(app_id: &str) -> Option<PathBuf> {
         let dir = if let Some(d) = std::env::var_os("FUIDE_CONFIG_DIR") {
             PathBuf::from(d)
-        } else if cfg!(target_os = "macos") {
+        } else if cfg!(any(target_os = "macos", target_os = "ios")) {
             PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/FUIDE")
+        } else if cfg!(target_os = "windows") {
+            PathBuf::from(std::env::var_os("APPDATA")?).join("FUIDE")
         } else if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
             PathBuf::from(x).join("fuide")
         } else {
@@ -93,25 +98,42 @@ impl Settings {
         Some(dir.join(format!("{app_id}.conf")))
     }
 
-    /// Read the saved settings; `None` if there is no file (or it cannot be read).
-    /// Unknown keys are ignored and missing keys keep their defaults, so old files stay valid.
+    /// Read the saved settings from the platform path; `None` if there is no file.
     pub fn load(app_id: &str) -> Option<Self> {
-        let text = std::fs::read_to_string(Self::path(app_id)?).ok()?;
+        Self::load_from(&Self::path(app_id)?)
+    }
+
+    /// Write the settings to the platform path.
+    pub fn save(&self, app_id: &str) -> std::io::Result<()> {
+        let path = Self::path(app_id).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no config directory")
+        })?;
+        self.save_to(&path)
+    }
+
+    /// Read from an explicit file; `None` if it does not exist or cannot be read.
+    /// Unknown keys are ignored and missing keys keep their defaults, so old files stay valid.
+    pub fn load_from(path: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(path).ok()?;
         Some(Self::parse(&text))
     }
 
-    /// Write the settings (creates the directory).
-    pub fn save(&self, app_id: &str) -> std::io::Result<()> {
-        let path = Self::path(app_id).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no config directory (HOME unset)",
-            )
-        })?;
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(path, self.to_string())
+    /// Write to an explicit file (creates the directory). The write is atomic — temp file in
+    /// the same directory, then rename — so a crash mid-write never leaves a truncated file.
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!(
+            ".{}.tmp-{}",
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            std::process::id()
+        ));
+        std::fs::write(&tmp, self.to_string())?;
+        std::fs::rename(&tmp, path).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
     }
 
     pub fn parse(text: &str) -> Self {
@@ -364,15 +386,24 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_use_config_dir_override() {
+    fn save_to_and_load_from_round_trip_and_create_the_directory() {
         let dir = std::env::temp_dir().join(format!("fuide-settings-test-{}", std::process::id()));
-        // SAFETY: tests in this module run single-threaded with respect to this variable
-        // (no other test reads it), and the value is a valid path.
-        unsafe { std::env::set_var("FUIDE_CONFIG_DIR", &dir) };
+        let path = dir.join("nested").join("unit-test.conf");
+        assert_eq!(Settings::load_from(&path), None);
         let s = Settings::new(PaletteKind::Green);
-        s.save("unit-test").unwrap();
-        assert_eq!(Settings::load("unit-test"), Some(s));
+        s.save_to(&path).unwrap();
+        assert_eq!(Settings::load_from(&path), Some(s));
+        // no temp file left behind
+        assert_eq!(
+            std::fs::read_dir(path.parent().unwrap()).unwrap().count(),
+            1
+        );
         std::fs::remove_dir_all(&dir).unwrap();
-        unsafe { std::env::remove_var("FUIDE_CONFIG_DIR") };
+    }
+
+    #[test]
+    fn platform_path_ends_with_app_conf() {
+        let p = Settings::path("brew").expect("HOME / APPDATA is set on dev machines");
+        assert_eq!(p.file_name().unwrap(), "brew.conf");
     }
 }

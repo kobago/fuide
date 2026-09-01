@@ -165,6 +165,9 @@ pub fn table(
             } else {
                 widgets::hit(ui, rect, (id_salt, "sort", i), Sense::hover())
             };
+            resp.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, col.sortable, col.label)
+            });
             let p = ui.painter();
             let active = col.sortable && state.sort_col == i;
             let hovered = col.sortable && resp.hovered();
@@ -241,8 +244,18 @@ pub fn table(
                 if scroll_to == Some(row) {
                     resp.scroll_to_me(None);
                 }
-                let p = ui.painter().with_clip_rect(r.intersect(ui.clip_rect()));
                 let is_sel = state.selected == Some(row);
+                // rows are addressable by their first cell (the name column)
+                let name = cell(row, 0).text;
+                resp.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        true,
+                        is_sel,
+                        name.clone(),
+                    )
+                });
+                let p = ui.painter().with_clip_rect(r.intersect(ui.clip_rect()));
                 if is_sel {
                     p.rect_filled(r, egui::CornerRadius::ZERO, pal.accent.gamma_multiply(0.13));
                     p.rect_filled(

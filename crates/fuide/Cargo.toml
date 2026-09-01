@@ -8,3 +8,7 @@ license.workspace = true
 [dependencies]
 egui = { workspace = true }
 log = "0.4"
+
+[dev-dependencies]
+# UI tests: accessibility-tree queries + wgpu-rendered snapshots (`tests/`)
+egui_kittest = { version = "0.36.1", features = ["wgpu", "snapshot"] }

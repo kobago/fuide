@@ -1,6 +1,9 @@
 //! Instrument-style parts: nav tab, button, segment bar, arc gauge, lamp, log feed.
 
-use egui::{pos2, vec2, Align2, Color32, Id, Painter, Pos2, Rect, Response, Sense, Stroke, Ui};
+use egui::{
+    pos2, vec2, Align2, Color32, Id, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, WidgetInfo,
+    WidgetType,
+};
 
 use crate::{geom, theme};
 
@@ -14,6 +17,15 @@ pub fn nav_tab(ui: &mut Ui, label: &str, selected: bool) -> Response {
     let ts = theme::type_scale(ui.ctx());
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(w, ts.row + 2.0), Sense::click());
+    // accessibility label = what is drawn (upper-cased), so tests and screen readers agree
+    resp.widget_info(|| {
+        WidgetInfo::selected(
+            WidgetType::SelectableLabel,
+            true,
+            selected,
+            label.to_uppercase(),
+        )
+    });
     let p = ui.painter();
 
     let fill = if selected {
@@ -100,6 +112,7 @@ pub fn button_colored(
             Sense::hover()
         },
     );
+    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
     let p = ui.painter();
     let a = if !enabled {
         0.15
@@ -148,6 +161,26 @@ pub enum Icon {
     Refresh,
     /// Gear (settings): ring with radial teeth.
     Settings,
+}
+
+impl Icon {
+    /// Accessibility label (what a screen reader / UI test sees for an icon-only button).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ChevronLeft => "BACK",
+            Self::ChevronRight => "FORWARD",
+            Self::ChevronUp => "UP",
+            Self::ChevronDown => "DOWN",
+            Self::ArrowUp => "ARROW UP",
+            Self::ArrowDown => "ARROW DOWN",
+            Self::TriangleUp => "ASCENDING",
+            Self::TriangleDown => "DESCENDING",
+            Self::Plus => "ADD",
+            Self::Cross => "CLOSE",
+            Self::Refresh => "REFRESH",
+            Self::Settings => "SETTINGS",
+        }
+    }
 }
 
 /// Draw `icon` centred on `center`, fitting a `size` × `size` box, with `stroke`.
@@ -242,6 +275,7 @@ pub fn icon_button(ui: &mut Ui, size: egui::Vec2, icon: Icon, enabled: bool) -> 
             Sense::hover()
         },
     );
+    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, icon.label()));
     let p = ui.painter();
     let a = if !enabled {
         0.15
@@ -318,6 +352,9 @@ pub fn toggle_chip(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
     if resp.clicked() {
         *on = !*on;
     }
+    resp.widget_info(|| {
+        WidgetInfo::selected(WidgetType::Checkbox, true, *on, label.to_uppercase())
+    });
     let p = ui.painter();
     let pts = geom::pentagon_tr(rect, c);
     if *on {
