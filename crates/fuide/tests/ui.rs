@@ -12,7 +12,7 @@
 //! not bound to any fonts"), so the first frame installs and draws nothing.
 
 use egui::accesskit::Toggled;
-use egui::{pos2, vec2, Rect, Vec2};
+use egui::{pos2, vec2, Key, Modifiers, Rect, Vec2};
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use egui_kittest::Harness;
@@ -25,6 +25,9 @@ struct Demo {
     tab: usize,
     clicks: u32,
     settings_clicks: u32,
+    close_requests: u32,
+    /// Show an `ERROR` alert card over everything (input under it is blocked).
+    alert: bool,
 }
 
 /// A representative screen: shell with lamps and the gear, one panel with a nav tab group,
@@ -73,6 +76,22 @@ fn demo(ui: &mut egui::Ui, st: &mut Demo) {
         });
     if out.settings_clicked {
         st.settings_clicks += 1;
+    }
+    if out.close_requested {
+        st.close_requests += 1;
+    }
+    if st.alert {
+        let resp = fuide::dialog::alert(
+            ui.ctx(),
+            true,
+            "ERROR",
+            "probe // x",
+            "details :: log",
+            pal.danger,
+        );
+        if resp.inner == Some(true) {
+            st.alert = false;
+        }
     }
 }
 
@@ -125,6 +144,31 @@ fn interactive_parts_are_addressable_by_label() {
     h.get_by_label("HIDDEN").click();
     h.run_steps(2);
     assert!(h.state().hidden);
+}
+
+#[test]
+fn cmd_w_and_the_close_button_ask_the_window_to_close_even_under_a_modal() {
+    // `ViewportCommand::Close` itself is not observable here: kittest runs one pass per queued
+    // event and keeps only the last pass' output, so the shell reports the request instead.
+    let mut h = harness();
+    h.run_steps(2);
+    assert_eq!(h.state().close_requests, 0);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(1);
+    assert_eq!(h.state().close_requests, 1);
+
+    h.get_by_label("CLOSE WINDOW").click();
+    h.run_steps(2);
+    assert_eq!(h.state().close_requests, 2);
+
+    // a modal alert blocks pointer input underneath, but Cmd+W still gets through
+    h.state_mut().alert = true;
+    h.run_steps(12);
+    h.get_by_label("ACKNOWLEDGE");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(1);
+    assert_eq!(h.state().close_requests, 3);
 }
 
 #[test]

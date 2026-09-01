@@ -52,6 +52,9 @@ pub struct ShellOutput<R> {
     pub inner: R,
     /// The gear button (see [`Shell::settings_button`]) was clicked this frame.
     pub settings_clicked: bool,
+    /// The window was asked to close this frame (× button or Cmd+W); `ViewportCommand::Close`
+    /// has been sent. Apps can use it to flush state before the window goes.
+    pub close_requested: bool,
 }
 
 impl Shell {
@@ -116,6 +119,14 @@ impl Shell {
         // child viewport nor when egui embeds it as a `Window` (`embed_viewports`, where both
         // shells run in the same viewport).
         let vp = ui.id().with(ui.ctx().viewport_id());
+        // Cmd+W closes the window (macOS convention). For the main shell that ends the app;
+        // it works while a dialog is up or a text field has focus, unlike app shortcuts.
+        // Tool windows close themselves (their host also sees the key when embedded).
+        let mut close_requested =
+            !self.tool_window && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::W));
+        if close_requested {
+            ui.ctx().send_viewport_cmd(ViewportCommand::Close);
+        }
         let pal = theme::palette(ui.ctx());
         let chamfer = theme::corners(ui.ctx()).window;
         let ts = theme::type_scale(ui.ctx());
@@ -235,7 +246,10 @@ impl Shell {
                 }
                 if resp.clicked() {
                     match glyph {
-                        Glyph::Close => ui.ctx().send_viewport_cmd(ViewportCommand::Close),
+                        Glyph::Close => {
+                            close_requested = true;
+                            ui.ctx().send_viewport_cmd(ViewportCommand::Close);
+                        }
                         Glyph::Max => {
                             let maxed = ui.input(|i| i.viewport().maximized.unwrap_or(false));
                             ui.ctx()
@@ -355,6 +369,7 @@ impl Shell {
         ShellOutput {
             inner: out,
             settings_clicked,
+            close_requested,
         }
     }
 }
