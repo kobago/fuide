@@ -1,6 +1,9 @@
 //! Rectangular panel with a title chip that "cuts" the top edge (chamfer optional via `theme::Corners`).
 
-use egui::{pos2, Align2, Color32, Id, Layout, Rect, Stroke, Ui, UiBuilder, Vec2};
+use egui::{
+    pos2, Align2, Color32, Id, Layout, Rect, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo,
+    WidgetType,
+};
 
 use crate::{geom, theme};
 
@@ -42,14 +45,36 @@ impl Panel {
         rect: Rect,
         add_contents: impl FnOnce(&mut Ui) -> R,
     ) -> R {
+        self.show_impl(ui, rect, None, add_contents).0
+    }
+
+    /// Like [`Panel::show_rect`], but the title chip is a click target that opens / closes the
+    /// panel (drawn as `[-]` / `[+]` after the title). The caller owns the flag: it shrinks
+    /// `rect` to a header strip while closed, and flips the flag when this returns `true`.
+    pub fn show_collapsible_rect<R>(
+        self,
+        ui: &mut Ui,
+        rect: Rect,
+        open: bool,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> (R, bool) {
+        self.show_impl(ui, rect, Some(open), add_contents)
+    }
+
+    fn show_impl<R>(
+        self,
+        ui: &mut Ui,
+        rect: Rect,
+        open: Option<bool>,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> (R, bool) {
         let pal = theme::palette(ui.ctx());
         let c = theme::corners(ui.ctx()).panel;
         let ts = theme::type_scale(ui.ctx());
-        let p = ui.painter();
 
-        geom::fill(p, geom::hexagon_tl_br(rect, c), pal.bg_panel);
+        geom::fill(ui.painter(), geom::hexagon_tl_br(rect, c), pal.bg_panel);
         geom::outline(
-            p,
+            ui.painter(),
             geom::hexagon_tl_br(rect, c),
             Stroke::new(1.0, pal.accent_dim.gamma_multiply(0.8)),
         );
@@ -57,11 +82,36 @@ impl Panel {
         // title chip straddling the top edge
         let inset = CHIP_INSET.max(c);
         let chip_h = (ts.label + 6.0).round();
+        let title = match open {
+            Some(true) => format!("{} [-]", self.title),
+            Some(false) => format!("{} [+]", self.title),
+            None => self.title.clone(),
+        };
+        let chip_min = pos2(rect.left() + inset, rect.top() - chip_h / 2.0);
+        let mut toggled = false;
+        let mut hovered = false;
+        if let Some(is_open) = open {
+            let chip_rect = Rect::from_min_size(
+                chip_min,
+                egui::vec2(chip_width(ui.painter(), &title, ts.label), chip_h),
+            );
+            let resp = ui.interact(
+                chip_rect,
+                Id::new(("fuide-panel-open", &self.title)),
+                Sense::click(),
+            );
+            crate::agent::describe(&resp, || {
+                WidgetInfo::selected(WidgetType::Checkbox, true, is_open, self.title.clone())
+            });
+            toggled = resp.clicked();
+            hovered = resp.hovered();
+        }
+        let p = ui.painter();
         chip(
             p,
-            pos2(rect.left() + inset, rect.top() - chip_h / 2.0),
-            &self.title,
-            pal.accent,
+            chip_min,
+            &title,
+            if hovered { pal.text } else { pal.accent },
             &pal,
             ts.label,
         );
@@ -91,7 +141,7 @@ impl Panel {
                 .layout(Layout::top_down(egui::Align::Min)),
         );
         child.set_clip_rect(inner.intersect(ui.clip_rect()));
-        add_contents(&mut child)
+        (add_contents(&mut child), toggled)
     }
 }
 

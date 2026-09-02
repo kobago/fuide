@@ -38,6 +38,8 @@ pub struct Settings {
     /// Layout: height of the app's log panel in logical px, once the user has dragged the
     /// divider (`None` = the app's default). Not shown in the settings window.
     pub log_height: Option<f32>,
+    /// Layout: the log panel is open (collapsed to its header strip when false).
+    pub log_open: bool,
     /// Agent interface (MCP server on a Unix socket, [`crate::agent`]) on.
     pub agent: bool,
     /// The agent may press confirmation dialogs' verbs itself (`UPGRADE`, `DELETE` …). Off =
@@ -59,6 +61,7 @@ impl Settings {
             chamfer: false,
             compact: false,
             log_height: None,
+            log_open: true,
             agent: false,
             agent_confirm: false,
         }
@@ -167,6 +170,7 @@ impl Settings {
                 "chamfer" => s.chamfer = v == "true",
                 "compact" => s.compact = v == "true",
                 "log_height" => s.log_height = v.parse().ok().filter(|h: &f32| h.is_finite()),
+                "log_open" => s.log_open = v != "false",
                 "agent" => s.agent = v == "true",
                 "agent_confirm" => s.agent_confirm = v == "true",
                 _ => {}
@@ -185,6 +189,7 @@ impl std::fmt::Display for Settings {
         if let Some(h) = self.log_height {
             writeln!(f, "log_height={h}")?;
         }
+        writeln!(f, "log_open={}", self.log_open)?;
         writeln!(f, "agent={}", self.agent)?;
         writeln!(f, "agent_confirm={}", self.agent_confirm)?;
         Ok(())
@@ -464,6 +469,7 @@ mod tests {
             chamfer: true,
             compact: false,
             log_height: Some(180.0),
+            log_open: false,
             agent: true,
             agent_confirm: false,
         };
@@ -473,6 +479,7 @@ mod tests {
             "unset keys are omitted"
         );
         assert_eq!(Settings::parse("log_height=abc").log_height, None);
+        assert!(Settings::parse("log_open=nonsense").log_open, "only `false` closes it");
     }
 
     #[test]
