@@ -479,7 +479,10 @@ mod tests {
             "unset keys are omitted"
         );
         assert_eq!(Settings::parse("log_height=abc").log_height, None);
-        assert!(Settings::parse("log_open=nonsense").log_open, "only `false` closes it");
+        assert!(
+            Settings::parse("log_open=nonsense").log_open,
+            "only `false` closes it"
+        );
     }
 
     #[test]
