@@ -165,7 +165,7 @@ pub fn table(
             } else {
                 widgets::hit(ui, rect, (id_salt, "sort", i), Sense::hover())
             };
-            resp.widget_info(|| {
+            crate::agent::describe(&resp, || {
                 egui::WidgetInfo::labeled(egui::WidgetType::Button, col.sortable, col.label)
             });
             let p = ui.painter();
@@ -247,7 +247,7 @@ pub fn table(
                 let is_sel = state.selected == Some(row);
                 // rows are addressable by their first cell (the name column)
                 let name = cell(row, 0).text;
-                resp.widget_info(|| {
+                crate::agent::describe(&resp, || {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::SelectableLabel,
                         true,

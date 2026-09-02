@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 egui = { workspace = true }
 log = "0.4"
+# MCP (JSON-RPC) messages for the agent interface
+serde_json = "1"
 
 [dev-dependencies]
 # UI tests: accessibility-tree queries + wgpu-rendered snapshots (`tests/`)

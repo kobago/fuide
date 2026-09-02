@@ -18,7 +18,7 @@ pub fn nav_tab(ui: &mut Ui, label: &str, selected: bool) -> Response {
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(w, ts.row + 2.0), Sense::click());
     // accessibility label = what is drawn (upper-cased), so tests and screen readers agree
-    resp.widget_info(|| {
+    crate::agent::describe(&resp, || {
         WidgetInfo::selected(
             WidgetType::SelectableLabel,
             true,
@@ -112,7 +112,9 @@ pub fn button_colored(
             Sense::hover()
         },
     );
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    crate::agent::describe(&resp, || {
+        WidgetInfo::labeled(WidgetType::Button, enabled, label)
+    });
     let p = ui.painter();
     let a = if !enabled {
         0.15
@@ -275,7 +277,9 @@ pub fn icon_button(ui: &mut Ui, size: egui::Vec2, icon: Icon, enabled: bool) -> 
             Sense::hover()
         },
     );
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, icon.label()));
+    crate::agent::describe(&resp, || {
+        WidgetInfo::labeled(WidgetType::Button, enabled, icon.label())
+    });
     let p = ui.painter();
     let a = if !enabled {
         0.15
@@ -329,6 +333,10 @@ pub fn text_input(ui: &mut Ui, width: f32, text: &mut String, hint: &str) -> Res
             )
             .desired_width(f32::INFINITY),
     );
+    // the TextEdit reports its own accesskit node; the agent sees it under the hint text
+    let mut info = WidgetInfo::text_edit(true, text.as_str(), text.as_str(), hint);
+    info.label = Some(hint.to_uppercase());
+    crate::agent::note(&resp, &info);
     let a = if resp.has_focus() { 0.9 } else { 0.35 };
     ui.painter().set(
         outline_idx,
@@ -352,7 +360,7 @@ pub fn toggle_chip(ui: &mut Ui, label: &str, on: &mut bool) -> Response {
     if resp.clicked() {
         *on = !*on;
     }
-    resp.widget_info(|| {
+    crate::agent::describe(&resp, || {
         WidgetInfo::selected(WidgetType::Checkbox, true, *on, label.to_uppercase())
     });
     let p = ui.painter();
@@ -624,7 +632,7 @@ pub fn h_splitter(
         *value = (*value - resp.drag_delta().y).clamp(min, max);
     }
     *value = value.clamp(min, max);
-    resp.widget_info(|| WidgetInfo::slider(true, f64::from(*value), label));
+    crate::agent::describe(&resp, || WidgetInfo::slider(true, f64::from(*value), label));
     if resp.hovered() || resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
     }

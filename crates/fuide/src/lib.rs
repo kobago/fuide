@@ -8,6 +8,8 @@
 //! - [`widgets`]: nav tab, button, segment bar, arc gauge, lamp, log feed, readout
 //! - [`fx`]: scanlines, scan band
 //! - [`devshot`]: `FUIDE_SCREENSHOT` self-capture hook for visual checks
+//! - [`agent`]: MCP interface so an AI agent can observe and drive the app (visible cursor,
+//!   Unix socket + `--mcp` stdio bridge, on/off in the settings window)
 //! - [`dialog`]: modal dialog (dimmed backdrop, chip title, glowing outline, button row)
 //! - [`settings`]: per-app theme settings (palette / corners / density) — a small config file
 //!   plus a settings window opened as a child viewport (`Cmd+,`)
@@ -17,6 +19,7 @@
 //!
 //! Corners are square by default. 45° chamfers are an opt-in flourish: `theme::set_corners(&ctx, Corners::CHAMFER)`.
 
+pub mod agent;
 pub mod devshot;
 pub mod dialog;
 pub mod fmt;
@@ -30,6 +33,7 @@ pub mod table;
 pub mod theme;
 pub mod widgets;
 
+pub use agent::Agent;
 pub use dialog::Dialog;
 pub use panel::Panel;
 pub use settings::{Settings, SettingsWindow};

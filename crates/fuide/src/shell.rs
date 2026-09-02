@@ -216,7 +216,7 @@ impl Shell {
                     Id::new(("fuide-winbtn", glyph as u8, vp)),
                     Sense::click(),
                 );
-                resp.widget_info(|| {
+                crate::agent::describe(&resp, || {
                     egui::WidgetInfo::labeled(egui::WidgetType::Button, true, glyph.label())
                 });
                 let p = ui.painter();
@@ -269,7 +269,7 @@ impl Shell {
                     Id::new(("fuide-winbtn-settings", vp)),
                     Sense::click(),
                 );
-                resp.widget_info(|| {
+                crate::agent::describe(&resp, || {
                     egui::WidgetInfo::labeled(
                         egui::WidgetType::Button,
                         true,
