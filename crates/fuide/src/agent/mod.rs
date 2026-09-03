@@ -122,9 +122,31 @@ pub fn note(resp: &Response, info: &WidgetInfo) {
 
 // ------------------------------------------------------------------------------- protocol
 
+/// An app-defined MCP tool: listed by `tools/list` next to the generic ones, delivered to the
+/// app through [`Agent::take_tool`] and answered with [`Agent::finish_tool`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    /// JSON schema of the arguments (`inputSchema`).
+    pub schema: serde_json::Value,
+}
+
+/// A call of an app-defined tool, taken by the app from [`Agent::take_tool`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolCall {
+    pub name: String,
+    pub args: serde_json::Value,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Observe,
+    /// An app-defined tool (see [`ToolSpec`]).
+    Tool {
+        name: String,
+        args: serde_json::Value,
+    },
     Screenshot {
         scale: f32,
         path: Option<String>,
@@ -165,7 +187,9 @@ pub fn instructions(app_name: &str) -> String {
     format!(
         "Drives the {app_name} window (a FUI desktop app) while a person watches: call `observe` first, \
          then `click` / `type` / `key` using the exact labels it lists, and read the observation each \
-         action returns. Some confirmations are reserved for the human; the observation says so."
+         action returns. Some confirmations are reserved for the human; the observation says so. \
+         Tools beyond `observe` / `screenshot` / `click` / `type` / `key` / `wait` are the app's own: \
+         prefer them for structured edits — they act directly and return the observation afterwards."
     )
 }
 
@@ -173,6 +197,8 @@ pub fn instructions(app_name: &str) -> String {
 
 /// Frames to let the app react after an action before reporting back.
 const SETTLE_FRAMES: u32 = 8;
+/// Frames to wait for a widget an app tool created (it registers on its first draw).
+const POINT_FRAMES: u32 = 4;
 /// Typewriter delay between characters, seconds.
 const CHAR_DELAY: f64 = 0.035;
 /// Cursor glide speed, logical px per second, and its duration bounds.
@@ -188,7 +214,12 @@ struct ShotTag;
 
 enum Next {
     Click,
-    Focus { chars: VecDeque<char>, submit: bool },
+    Focus {
+        chars: VecDeque<char>,
+        submit: bool,
+    },
+    /// Arrive and flash only (an app tool already did the work).
+    Flash,
 }
 
 enum Phase {
@@ -226,6 +257,19 @@ enum Phase {
         req: Request,
         until: f64,
     },
+    /// An app tool: `call` is `Some` until the app takes it, then the phase waits for
+    /// [`Agent::finish_tool`].
+    Tool {
+        req: Request,
+        call: Option<ToolCall>,
+    },
+    /// After an app tool: find the widget it touched (it may only appear next frame) and fly
+    /// the cursor there.
+    Point {
+        req: Request,
+        label: String,
+        frames: u32,
+    },
 }
 
 pub struct Agent {
@@ -247,6 +291,9 @@ pub struct Agent {
     cursor_seen: f64,
     flash: Option<(Rect, f64)>,
     last_action: Option<String>,
+    tools: Vec<ToolSpec>,
+    /// Text an app tool produced, sent ahead of the observation once the app has settled.
+    tool_text: Option<String>,
 }
 
 impl Agent {
@@ -270,6 +317,57 @@ impl Agent {
             cursor_seen: 0.0,
             flash: None,
             last_action: None,
+            tools: Vec::new(),
+            tool_text: None,
+        }
+    }
+
+    /// The app's own MCP tools. Set before enabling the server (they go into `tools/list`).
+    pub fn set_tools(&mut self, tools: Vec<ToolSpec>) {
+        self.tools = tools;
+    }
+
+    pub fn tools(&self) -> &[ToolSpec] {
+        &self.tools
+    }
+
+    /// The app-defined tool call waiting for the app, if any. Handle it and call
+    /// [`Agent::finish_tool`] in the same frame (after `tick`).
+    pub fn take_tool(&mut self) -> Option<ToolCall> {
+        match &mut self.phase {
+            Phase::Tool { call, .. } => call.take(),
+            _ => None,
+        }
+    }
+
+    /// Answer the tool call from [`Agent::take_tool`]: `Ok(text)` is returned ahead of the
+    /// observation after the app has settled; `Err` is returned at once. `focus` names the
+    /// widget the tool touched (a list row, an input): the cursor flies there and flashes it,
+    /// so the person watching sees where the change landed. Nothing is clicked.
+    pub fn finish_tool(&mut self, result: Result<String, String>, focus: Option<&str>) {
+        let phase = std::mem::replace(&mut self.phase, Phase::Idle);
+        let Phase::Tool { req, .. } = phase else {
+            self.phase = phase;
+            return;
+        };
+        match result {
+            Ok(text) => {
+                self.tool_text = Some(text);
+                self.phase = match focus {
+                    Some(label) => Phase::Point {
+                        req,
+                        label: label.to_string(),
+                        frames: POINT_FRAMES,
+                    },
+                    None => Phase::Settle {
+                        req,
+                        frames: SETTLE_FRAMES,
+                    },
+                };
+            }
+            Err(e) => {
+                let _ = req.reply.send(Reply::Error(e));
+            }
         }
     }
 
@@ -291,6 +389,7 @@ impl Agent {
                 move || ctx.request_repaint(),
                 self.app_name.clone(),
                 instructions(&self.app_name),
+                self.tools.clone(),
             ) {
                 Ok(s) => {
                     self.server = Some(s);
@@ -454,6 +553,13 @@ impl Agent {
                                 submit,
                             }
                         }
+                        Next::Flash => {
+                            self.flash = Some((target.rect, now));
+                            Phase::Settle {
+                                req,
+                                frames: SETTLE_FRAMES,
+                            }
+                        }
                     }
                 }
             }
@@ -533,12 +639,29 @@ impl Agent {
                         frames: frames - 1,
                     }
                 } else if let Some(state) = state.as_deref() {
-                    let _ = req.reply.send(Reply::Text(self.observation(ctx, state)));
+                    let mut text = self.observation(ctx, state);
+                    if let Some(prefix) = self.tool_text.take() {
+                        text = format!("{prefix}\n\n{text}");
+                    }
+                    let _ = req.reply.send(Reply::Text(text));
                     Phase::Idle
                 } else {
                     Phase::Settle { req, frames } // the app supplies the state next frame
                 }
             }
+            Phase::Tool { req, call } => Phase::Tool { req, call },
+            Phase::Point { req, label, frames } => match self.find(&label, 1, None) {
+                Ok(w) => self.begin_move(ctx, req, w, now, Next::Flash),
+                Err(_) if frames > 0 => Phase::Point {
+                    req,
+                    label,
+                    frames: frames - 1,
+                },
+                Err(_) => Phase::Settle {
+                    req,
+                    frames: SETTLE_FRAMES,
+                },
+            },
             Phase::Shot {
                 req,
                 scale,
@@ -705,6 +828,20 @@ impl Agent {
                 req,
                 until: now + ms as f64 / 1000.0,
             },
+            Command::Tool { name, args } => {
+                if !self.tools.iter().any(|t| t.name == name) {
+                    let _ = req
+                        .reply
+                        .send(Reply::Error(format!("unknown tool `{name}`")));
+                    return Phase::Idle;
+                }
+                self.last_action = Some(format!("TOOL ▸ {}", name.to_uppercase()));
+                self.cursor_seen = now;
+                Phase::Tool {
+                    req,
+                    call: Some(ToolCall { name, args }),
+                }
+            }
         }
     }
 
@@ -745,8 +882,11 @@ impl Agent {
             | Phase::Keys { req, .. }
             | Phase::Settle { req, .. }
             | Phase::Shot { req, .. }
-            | Phase::Wait { req, .. } => Some(req),
+            | Phase::Wait { req, .. }
+            | Phase::Tool { req, .. }
+            | Phase::Point { req, .. } => Some(req),
         };
+        self.tool_text = None;
         if let Some(req) = req {
             let _ = req.reply.send(Reply::Error(why.into()));
         }

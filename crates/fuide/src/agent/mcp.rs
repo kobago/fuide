@@ -5,14 +5,28 @@
 
 use serde_json::{json, Value};
 
-use super::{Command, Reply};
+use super::{Command, Reply, ToolSpec};
 
 /// Newest protocol revision this server knows; older clients get their own version echoed back.
 pub const PROTOCOL: &str = "2025-06-18";
 const KNOWN: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
-/// Tool definitions (`tools/list`).
-pub fn tools() -> Value {
+/// Tool definitions (`tools/list`): the generic ones plus the app's own.
+pub fn tools(extra: &[ToolSpec]) -> Value {
+    let mut list = generic_tools();
+    if let Value::Array(items) = &mut list {
+        for t in extra {
+            items.push(json!({
+                "name": t.name,
+                "description": t.description,
+                "inputSchema": t.schema,
+            }));
+        }
+    }
+    list
+}
+
+fn generic_tools() -> Value {
     json!([
         {
             "name": "observe",
@@ -85,10 +99,20 @@ pub fn tools() -> Value {
     ])
 }
 
-/// Turn a `tools/call` into a [`Command`].
-pub fn parse_call(name: &str, args: &Value) -> Result<Command, String> {
+/// Turn a `tools/call` into a [`Command`]; names in `extra` become [`Command::Tool`].
+pub fn parse_call(name: &str, args: &Value, extra: &[ToolSpec]) -> Result<Command, String> {
     let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_owned);
     let n = |k: &str| args.get(k).and_then(Value::as_u64);
+    if extra.iter().any(|t| t.name == name) {
+        return Ok(Command::Tool {
+            name: name.to_string(),
+            args: if args.is_object() {
+                args.clone()
+            } else {
+                json!({})
+            },
+        });
+    }
     Ok(match name {
         "observe" => Command::Observe,
         "screenshot" => Command::Screenshot {
@@ -150,6 +174,7 @@ pub fn handle_line(
     line: &str,
     server_name: &str,
     instructions: &str,
+    extra: &[ToolSpec],
     call: &mut dyn FnMut(Command) -> Reply,
 ) -> Option<String> {
     let line = line.trim();
@@ -185,14 +210,14 @@ pub fn handle_line(
             })
         }
         "ping" => json!({}),
-        "tools/list" => json!({ "tools": tools() }),
+        "tools/list" => json!({ "tools": tools(extra) }),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             let args = params
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            match parse_call(name, &args) {
+            match parse_call(name, &args, extra) {
                 Ok(cmd) => call_result(call(cmd)),
                 Err(e) => call_result(Reply::Error(e)),
             }
@@ -211,10 +236,58 @@ mod tests {
     use super::*;
 
     fn handle(line: &str, call: &mut dyn FnMut(Command) -> Reply) -> Option<Value> {
-        handle_line(line, "test", "hi", call).map(|s| serde_json::from_str(&s).unwrap())
+        handle_line(line, "test", "hi", &[], call).map(|s| serde_json::from_str(&s).unwrap())
     }
     fn no_call(_: Command) -> Reply {
         panic!("unexpected tool call")
+    }
+
+    #[test]
+    fn app_tools_are_listed_and_parsed() {
+        let extra = vec![ToolSpec {
+            name: "measure".into(),
+            description: "Volume".into(),
+            schema: json!({ "type": "object", "properties": { "id": { "type": "integer" } } }),
+        }];
+        let mut seen = Vec::new();
+        let out = handle_line(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+            "t",
+            "i",
+            &extra,
+            &mut |c| {
+                seen.push(c);
+                Reply::Text(String::new())
+            },
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let names: Vec<&str> = v["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names.last(), Some(&"measure"));
+        assert_eq!(names.len(), 7);
+        handle_line(
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"measure","arguments":{"id":3}}}"#,
+            "t",
+            "i",
+            &extra,
+            &mut |c| {
+                seen.push(c);
+                Reply::Text(String::new())
+            },
+        );
+        assert_eq!(
+            seen,
+            [Command::Tool {
+                name: "measure".into(),
+                args: json!({"id": 3})
+            }]
+        );
+        assert!(parse_call("measure", &json!({}), &[]).is_err());
     }
 
     #[test]
@@ -326,22 +399,22 @@ mod tests {
     #[test]
     fn defaults_and_clamps() {
         assert_eq!(
-            parse_call("wait", &json!({})).unwrap(),
+            parse_call("wait", &json!({}), &[]).unwrap(),
             Command::Wait { ms: 500 }
         );
         assert_eq!(
-            parse_call("wait", &json!({"ms": 99999})).unwrap(),
+            parse_call("wait", &json!({"ms": 99999}), &[]).unwrap(),
             Command::Wait { ms: 10_000 }
         );
         assert_eq!(
-            parse_call("key", &json!({"key": "cmd+3", "repeat": 0})).unwrap(),
+            parse_call("key", &json!({"key": "cmd+3", "repeat": 0}), &[]).unwrap(),
             Command::Key {
                 combo: "cmd+3".into(),
                 repeat: 1
             }
         );
         assert_eq!(
-            parse_call("observe", &json!(null)).unwrap(),
+            parse_call("observe", &json!(null), &[]).unwrap(),
             Command::Observe
         );
     }

@@ -32,6 +32,11 @@ fn demo(ui: &mut egui::Ui, st: &mut Demo) {
     }
     let agent = st.agent.get_or_insert_with(|| {
         let mut a = Agent::new("kittest", "Kittest Demo");
+        a.set_tools(vec![fuide::agent::ToolSpec {
+            name: "bump".into(),
+            description: "adds `by` clicks".into(),
+            schema: serde_json::json!({ "type": "object" }),
+        }]);
         a.enable_without_server();
         a
     });
@@ -44,6 +49,11 @@ fn demo(ui: &mut egui::Ui, st: &mut Demo) {
         .wants_state()
         .then(|| format!("clicks: {} :: filter: {:?}", st.clicks, st.filter));
     agent.tick(ui.ctx(), state);
+    if let Some(call) = agent.take_tool() {
+        let by = call.args.get("by").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+        st.clicks += by;
+        agent.finish_tool(Ok(format!("bumped by {by}")), Some("GO"));
+    }
     if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
         st.enter_presses += 1;
     }
@@ -251,4 +261,36 @@ fn screenshot_comes_back_as_scaled_png() {
         other => panic!("expected an image, got {other:?}"),
     }
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn app_tools_run_in_the_app_and_point_at_their_widget() {
+    let mut h = harness();
+    let rx = submit(
+        &h,
+        Command::Tool {
+            name: "bump".into(),
+            args: serde_json::json!({ "by": 3 }),
+        },
+    );
+    let t = text(drive(&mut h, rx));
+    assert!(t.starts_with("bumped by 3\n\n"), "{t}");
+    assert!(
+        t.contains("clicks: 3"),
+        "the observation follows the tool text: {t}"
+    );
+    assert_eq!(
+        h.state().agent.as_ref().unwrap().last_action(),
+        Some("TOOL ▸ BUMP")
+    );
+    // no click was injected: the tool did the work itself
+    assert_eq!(h.state().clicks, 3);
+    let rx = submit(
+        &h,
+        Command::Tool {
+            name: "nope".into(),
+            args: serde_json::json!({}),
+        },
+    );
+    assert!(matches!(drive(&mut h, rx), Reply::Error(e) if e.contains("unknown tool")));
 }

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::{mcp, server, Reply};
+use super::{mcp, server, Reply, ToolSpec};
 
 /// How long to wait for the socket after launching the app.
 const LAUNCH_WAIT: Duration = Duration::from_secs(12);
@@ -93,6 +93,12 @@ impl Bridge {
 
 /// Run the bridge on stdin/stdout until EOF. Returns the process exit code.
 pub fn run(app_id: &str, app_name: &str) -> i32 {
+    run_with_tools(app_id, app_name, &[])
+}
+
+/// Like [`run`], for an app with its own tools (they must match what the app passes to
+/// `Agent::set_tools`, since `tools/list` is answered here without the app).
+pub fn run_with_tools(app_id: &str, app_name: &str, tools: &[ToolSpec]) -> i32 {
     let mut bridge = Bridge {
         app_name: app_name.to_string(),
         path: server::socket_path(app_id),
@@ -118,7 +124,7 @@ pub fn run(app_id: &str, app_name: &str) -> i32 {
                 }
             }
         } else {
-            mcp::handle_line(&line, app_name, &instructions, &mut |_| {
+            mcp::handle_line(&line, app_name, &instructions, tools, &mut |_| {
                 Reply::Error("not connected".into())
             })
         };

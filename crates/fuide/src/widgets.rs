@@ -394,10 +394,11 @@ pub fn text_input(ui: &mut Ui, width: f32, text: &mut String, hint: &str) -> Res
             )
             .desired_width(f32::INFINITY),
     );
-    // the TextEdit reports its own accesskit node; the agent sees it under the hint text
+    // the TextEdit reports its own accesskit node without a label: re-describe it so the
+    // agent and UI tests find it under the hint text
     let mut info = WidgetInfo::text_edit(true, text.as_str(), text.as_str(), hint);
     info.label = Some(hint.to_uppercase());
-    crate::agent::note(&resp, &info);
+    crate::agent::describe(&resp, || info);
     let a = if resp.has_focus() { 0.9 } else { 0.35 };
     ui.painter().set(
         outline_idx,

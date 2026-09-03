@@ -54,6 +54,7 @@ impl Server {
         wake: impl Fn() + Send + Sync + 'static,
         server_name: String,
         instructions: String,
+        tools: Vec<super::ToolSpec>,
     ) -> std::io::Result<Self> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -83,6 +84,7 @@ impl Server {
                                     stats: Arc::clone(&stats),
                                     server_name: server_name.clone(),
                                     instructions: instructions.clone(),
+                                    tools: tools.clone(),
                                 };
                                 let _ = std::thread::Builder::new()
                                     .name("fuide-agent-conn".into())
@@ -128,6 +130,7 @@ struct Conn {
     stats: Arc<Stats>,
     server_name: String,
     instructions: String,
+    tools: Vec<super::ToolSpec>,
 }
 
 impl Conn {
@@ -177,9 +180,13 @@ impl Conn {
     }
 
     fn handle(&self, line: &str) -> Option<String> {
-        mcp::handle_line(line, &self.server_name, &self.instructions, &mut |cmd| {
-            self.call(cmd)
-        })
+        mcp::handle_line(
+            line,
+            &self.server_name,
+            &self.instructions,
+            &self.tools,
+            &mut |cmd| self.call(cmd),
+        )
     }
 
     fn call(&self, cmd: Command) -> Reply {
