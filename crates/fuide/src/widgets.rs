@@ -163,6 +163,13 @@ pub enum Icon {
     Refresh,
     /// Gear (settings): ring with radial teeth.
     Settings,
+    /// Transport: filled triangle.
+    Play,
+    Pause,
+    Stop,
+    /// Transport: bar + triangle (previous / next track).
+    SkipBack,
+    SkipForward,
 }
 
 impl Icon {
@@ -181,6 +188,11 @@ impl Icon {
             Self::Cross => "CLOSE",
             Self::Refresh => "REFRESH",
             Self::Settings => "SETTINGS",
+            Self::Play => "PLAY",
+            Self::Pause => "PAUSE",
+            Self::Stop => "STOP",
+            Self::SkipBack => "PREVIOUS",
+            Self::SkipForward => "NEXT",
         }
     }
 }
@@ -261,6 +273,55 @@ pub fn draw_icon(p: &Painter, center: Pos2, size: f32, icon: Icon, stroke: Strok
                 let d = vec2(a.cos(), a.sin());
                 p.line_segment([c + d * (r + 1.0), c + d * h], stroke);
             }
+        }
+        Icon::Play => {
+            p.add(egui::Shape::convex_polygon(
+                vec![
+                    c + vec2(-q * 0.8, -h),
+                    c + vec2(h, 0.0),
+                    c + vec2(-q * 0.8, h),
+                ],
+                stroke.color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Pause => {
+            let w = q * 0.7;
+            p.rect_filled(
+                Rect::from_min_max(c + vec2(-h * 0.8, -h), c + vec2(-h * 0.8 + w, h)),
+                egui::CornerRadius::ZERO,
+                stroke.color,
+            );
+            p.rect_filled(
+                Rect::from_min_max(c + vec2(h * 0.8 - w, -h), c + vec2(h * 0.8, h)),
+                egui::CornerRadius::ZERO,
+                stroke.color,
+            );
+        }
+        Icon::Stop => {
+            p.rect_filled(
+                Rect::from_center_size(c, vec2(size * 0.85, size * 0.85)),
+                egui::CornerRadius::ZERO,
+                stroke.color,
+            );
+        }
+        Icon::SkipBack | Icon::SkipForward => {
+            // bar at the destination side, triangle pointing at it
+            let dir = if icon == Icon::SkipForward { 1.0 } else { -1.0 };
+            let bar_x = dir * h;
+            p.line_segment(
+                [c + vec2(bar_x, -h * 0.9), c + vec2(bar_x, h * 0.9)],
+                Stroke::new(stroke.width * 1.4, stroke.color),
+            );
+            p.add(egui::Shape::convex_polygon(
+                vec![
+                    c + vec2(-dir * h, -h * 0.9),
+                    c + vec2(dir * (h - q * 0.6), 0.0),
+                    c + vec2(-dir * h, h * 0.9),
+                ],
+                stroke.color,
+                Stroke::NONE,
+            ));
         }
     }
 }

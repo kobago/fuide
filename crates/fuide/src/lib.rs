@@ -27,6 +27,7 @@ pub mod fontmetrics;
 pub mod fx;
 pub mod geom;
 pub mod panel;
+pub mod pathinput;
 pub mod settings;
 pub mod shell;
 pub mod table;

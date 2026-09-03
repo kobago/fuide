@@ -47,6 +47,15 @@ pub struct Shell {
     settings_button: bool,
 }
 
+const KEEP_CLEAR_ID: &str = "fuide-shell-keep-clear";
+
+/// Keep `rect` free of the shell's scanline / scan-band overlays for this frame (a video
+/// picture, an image). Call it from inside the content closure; it applies to that frame only.
+pub fn keep_clear(ctx: &egui::Context, rect: Rect) {
+    let v = [rect.left(), rect.top(), rect.right(), rect.bottom()];
+    ctx.data_mut(|d| d.insert_temp(Id::new(KEEP_CLEAR_ID), v));
+}
+
 /// What [`Shell::show_full`] hands back: the content closure's value plus title-bar clicks.
 pub struct ShellOutput<R> {
     pub inner: R,
@@ -349,12 +358,31 @@ impl Shell {
         let out = add_contents(&mut child);
 
         // ---- overlays + resize handles ----------------------------------------------------
-        {
-            let p = ui.painter();
-            if !self.tool_window {
-                fx::scan_band(p, r, t, pal.accent);
+        // (a rectangle registered with `keep_clear` — a video picture — gets no scanlines)
+        let hole = ui
+            .ctx()
+            .data_mut(|d| d.remove_temp::<[f32; 4]>(Id::new(KEEP_CLEAR_ID)))
+            .map(|[l, t, r, b]| Rect::from_min_max(pos2(l, t), pos2(r, b)));
+        let regions: Vec<Rect> = match hole {
+            None => vec![r],
+            Some(h) => {
+                let h = h.intersect(r);
+                vec![
+                    Rect::from_min_max(r.min, pos2(r.right(), h.top())),
+                    Rect::from_min_max(pos2(r.left(), h.bottom()), r.max),
+                    Rect::from_min_max(pos2(r.left(), h.top()), pos2(h.left(), h.bottom())),
+                    Rect::from_min_max(pos2(h.right(), h.top()), pos2(r.right(), h.bottom())),
+                ]
             }
-            fx::scanlines(p, r);
+        };
+        for region in regions.into_iter().filter(|q| q.is_positive()) {
+            let p = ui
+                .painter()
+                .with_clip_rect(region.intersect(ui.clip_rect()));
+            if !self.tool_window {
+                fx::scan_band(&p, r, t, pal.accent);
+            }
+            fx::scanlines(&p, r);
         }
         if !self.tool_window {
             resize_handles(ui, full, vp);
