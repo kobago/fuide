@@ -134,6 +134,8 @@ pub struct GitApp {
     recent_path: Option<PathBuf>,
     status: Status,
     commits: Vec<Commit>,
+    /// Lane layout of `commits` (`git::graph`), rebuilt with the log.
+    graph: Vec<git::GraphRow>,
     refs: Vec<Ref>,
     view: View,
     focus: Focus,
@@ -205,6 +207,7 @@ impl GitApp {
             recent_path: None,
             status: Status::default(),
             commits: Vec::new(),
+            graph: Vec::new(),
             refs: Vec::new(),
             view: View::Changes,
             focus: Focus::Unstaged,
@@ -515,6 +518,7 @@ impl GitApp {
                 }
                 Msg::Log(Ok(commits)) => {
                     let keep = self.selected_commit().map(|c| c.hash.clone());
+                    self.graph = git::graph(&commits);
                     self.commits = commits;
                     self.hist_table.selected =
                         keep.and_then(|h| self.commits.iter().position(|c| c.hash == h));
@@ -640,6 +644,7 @@ impl GitApp {
                     self.remember(&top);
                     self.status = Status::default();
                     self.commits.clear();
+                    self.graph.clear();
                     self.refs.clear();
                     self.unstaged.clear();
                     self.staged.clear();
@@ -1638,21 +1643,35 @@ impl GitApp {
 
     fn ui_history(&mut self, ui: &mut Ui, rect: Rect, actions: &mut Vec<Action>) {
         let pal = palette(ui.ctx());
+        // graph column: one slot per lane, capped so a wild history cannot eat the subject
+        const LANE_W: f32 = 12.0;
+        const LANES_MAX: usize = 8;
+        let lanes = self
+            .graph
+            .iter()
+            .map(|g| g.width)
+            .max()
+            .unwrap_or(1)
+            .clamp(1, LANES_MAX);
         let columns = [
+            Column::new("", Width::Fixed(LANE_W * lanes as f32 + 10.0)).unsortable(),
             Column::new("HASH", Width::Chars(8.0)).unsortable(),
             Column::new("SUBJECT", Width::Flex).unsortable(),
             Column::new("AUTHOR", Width::Chars(14.0)).unsortable(),
             Column::new("WHEN", Width::Chars(12.0)).unsortable(),
         ];
         let commits = &self.commits;
+        let graph = &self.graph;
         let now = self.now;
+        let t = ui.input(|i| i.time);
         let head = &self.status.head;
         let mut state = std::mem::take(&mut self.hist_table);
+        let lane_colors = [pal.accent, pal.ok, pal.warn, pal.accent_dim];
         let resp = Panel::new("History")
             .tag(format!("{} commits", commits.len()), pal.text_dim)
             .padding(8.0, 12.0)
             .show_rect(ui, rect, |ui| {
-                table::table(
+                table::table_decorated(
                     ui,
                     "history",
                     &columns,
@@ -1661,12 +1680,13 @@ impl GitApp {
                     |row, col| {
                         let c = &commits[row];
                         match col {
-                            0 => Cell::dim(c.short()).color(if &c.hash == head {
+                            0 => Cell::dim(""),
+                            1 => Cell::dim(c.short()).color(if &c.hash == head {
                                 pal.accent
                             } else {
                                 pal.text_dim
                             }),
-                            1 => {
+                            2 => {
                                 if c.refs.is_empty() {
                                     Cell::text(&c.subject)
                                 } else {
@@ -1674,8 +1694,61 @@ impl GitApp {
                                         .color(pal.accent)
                                 }
                             }
-                            2 => Cell::dim(&c.author),
+                            3 => Cell::dim(&c.author),
                             _ => Cell::dim(git::fmt_ago(c.time, now)),
+                        }
+                    },
+                    |p, row, r| {
+                        // commit graph: lines top → node → bottom, node = ring (HEAD = filled + pulse)
+                        let Some(g) = graph.get(row) else { return };
+                        let x = |lane: usize| r.left() + 8.0 + LANE_W * lane as f32 + LANE_W / 2.0;
+                        let color = |lane: usize| lane_colors[lane % lane_colors.len()];
+                        let (top, bot, cy) = (r.top(), r.bottom(), r.center().y);
+                        let node = egui::pos2(x(g.lane), cy);
+                        let p = p.with_clip_rect(egui::Rect::from_min_max(
+                            r.min,
+                            egui::pos2(r.left() + LANE_W * lanes as f32 + 10.0, r.bottom()),
+                        ));
+                        for &l in &g.through {
+                            fuide::geom::glow_line(
+                                &p,
+                                &[egui::pos2(x(l), top), egui::pos2(x(l), bot)],
+                                color(l).gamma_multiply(0.8),
+                                1.0,
+                                3.0,
+                            );
+                        }
+                        for &l in &g.into {
+                            fuide::geom::glow_line(
+                                &p,
+                                &[egui::pos2(x(l), top), node],
+                                color(l),
+                                1.0,
+                                3.0,
+                            );
+                        }
+                        for &l in &g.out {
+                            fuide::geom::glow_line(
+                                &p,
+                                &[node, egui::pos2(x(l), bot)],
+                                color(l),
+                                1.0,
+                                3.0,
+                            );
+                        }
+                        let c = color(g.lane);
+                        let is_head = &commits[row].hash == head;
+                        p.circle_filled(node, 4.5, pal.bg_deep);
+                        if is_head {
+                            let pulse = 0.5 + 0.5 * (t * 3.0).sin() as f32;
+                            p.circle_stroke(
+                                node,
+                                6.5,
+                                Stroke::new(1.0, c.gamma_multiply(0.3 + 0.4 * pulse)),
+                            );
+                            p.circle_filled(node, 3.5, c);
+                        } else {
+                            p.circle_stroke(node, 3.5, Stroke::new(1.5, c));
                         }
                     },
                 )

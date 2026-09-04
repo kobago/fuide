@@ -4,7 +4,7 @@
 //! - [`theme`]: palettes (CYAN / AMBER / GREEN), fonts (Orbitron display, Share Tech Mono data), style install
 //! - [`shell`]: frameless window shell (square body, glow, title/status bars, resize)
 //! - [`panel`]: panel with a title chip
-//! - [`table`]: sortable column list (header hit areas, hover, selection, tag cells)
+//! - [`table`]: sortable column list (header hit areas, hover, selection, tag cells, per-row paint hook)
 //! - [`widgets`]: nav tab, button, segment bar, arc gauge, lamp, log feed, readout
 //! - [`fx`]: scanlines, scan band
 //! - [`devshot`]: `FUIDE_SCREENSHOT` self-capture hook for visual checks

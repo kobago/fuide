@@ -489,6 +489,83 @@ pub fn parse_detail(text: &str) -> Option<CommitDetail> {
     })
 }
 
+/// One row of the commit graph: where the commit's node sits and which lane lines cross the row.
+/// Lane `x` positions are up to the drawer; the numbers here are lane indices.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GraphRow {
+    /// Lane of this commit's node.
+    pub lane: usize,
+    /// Lanes whose line comes down from the row above into the node (children's lanes).
+    pub into: Vec<usize>,
+    /// Lanes passing straight through this row without touching the node.
+    pub through: Vec<usize>,
+    /// Lanes leaving the node towards the row below (one per parent).
+    pub out: Vec<usize>,
+    /// Number of lanes in use on this row (for the column width).
+    pub width: usize,
+}
+
+/// Assign lanes to commits in `--topo-order` (children before parents), newest first.
+/// A lane "waits" for a hash: the first parent keeps the commit's lane, further parents take
+/// the lane already waiting for them or a free one; a lane is freed when its commit appears.
+pub fn graph(commits: &[Commit]) -> Vec<GraphRow> {
+    let mut lanes: Vec<Option<&str>> = Vec::new();
+    let mut rows = Vec::with_capacity(commits.len());
+    let free = |lanes: &mut Vec<Option<&str>>| -> usize {
+        match lanes.iter().position(Option::is_none) {
+            Some(i) => i,
+            None => {
+                lanes.push(None);
+                lanes.len() - 1
+            }
+        }
+    };
+    for c in commits {
+        let into: Vec<usize> = lanes
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| **l == Some(c.hash.as_str()))
+            .map(|(i, _)| i)
+            .collect();
+        let lane = match into.first() {
+            Some(&i) => i,
+            None => free(&mut lanes),
+        };
+        let through: Vec<usize> = lanes
+            .iter()
+            .enumerate()
+            .filter(|(i, l)| l.is_some() && !into.contains(i) && *i != lane)
+            .map(|(i, _)| i)
+            .collect();
+        for &i in &into {
+            lanes[i] = None;
+        }
+        let mut out = Vec::with_capacity(c.parents.len());
+        for (k, p) in c.parents.iter().enumerate() {
+            let target = if k == 0 {
+                lane
+            } else if let Some(i) = lanes.iter().position(|l| *l == Some(p.as_str())) {
+                i
+            } else {
+                free(&mut lanes)
+            };
+            lanes[target] = Some(p.as_str());
+            out.push(target);
+        }
+        rows.push(GraphRow {
+            lane,
+            into,
+            through,
+            out,
+            width: lanes.len().max(lane + 1),
+        });
+        while lanes.last().is_some_and(Option::is_none) {
+            lanes.pop();
+        }
+    }
+    rows
+}
+
 pub struct Git {
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -570,7 +647,13 @@ impl Git {
             Msg::Log(
                 query(
                     &repo,
-                    &["log", "--all", &n, &format!("--format={LOG_FORMAT}")],
+                    &[
+                        "log",
+                        "--all",
+                        "--topo-order",
+                        &n,
+                        &format!("--format={LOG_FORMAT}"),
+                    ],
                 )
                 .map(|o| parse_log(&lossy(&o))),
             )
@@ -861,6 +944,50 @@ u UU N... 100644 100644 100644 100644 e1 e2 e3 conflict.rs\0\
                 ('A', "new.txt".into())
             ]
         );
+    }
+
+    #[test]
+    fn graph_lanes_branch_and_merge() {
+        // e (merge of d and c) ← d ← b ← a ; c ← b   (topo order: e d c b a)
+        let mk = |h: &str, ps: &[&str]| Commit {
+            hash: h.into(),
+            parents: ps.iter().map(|s| s.to_string()).collect(),
+            author: String::new(),
+            time: 0,
+            refs: String::new(),
+            subject: String::new(),
+        };
+        let commits = [
+            mk("e", &["d", "c"]),
+            mk("d", &["b"]),
+            mk("c", &["b"]),
+            mk("b", &["a"]),
+            mk("a", &[]),
+        ];
+        let g = graph(&commits);
+        // e: new lane 0, first parent d stays in lane 0, second parent c opens lane 1
+        assert_eq!(
+            (g[0].lane, &g[0].out[..], &g[0].into[..]),
+            (0, &[0, 1][..], &[][..])
+        );
+        // d: lane 0, lane 1 (waiting for c) passes through
+        assert_eq!(
+            (g[1].lane, &g[1].through[..], &g[1].into[..]),
+            (0, &[1][..], &[0][..])
+        );
+        // c: lane 1 keeps its lane down to the fork point (first parent b); lane 0 passes through
+        assert_eq!(
+            (g[2].lane, &g[2].out[..], &g[2].through[..]),
+            (1, &[1][..], &[0][..])
+        );
+        // b: both lanes come into the node (lane 0 owns it, lane 1 merges in)
+        assert_eq!(
+            (g[3].lane, &g[3].into[..], &g[3].out[..]),
+            (0, &[0, 1][..], &[0][..])
+        );
+        assert_eq!(g[3].width, 2);
+        // a: root, nothing goes out; width back to 1
+        assert_eq!((g[4].lane, &g[4].out[..], g[4].width), (0, &[][..], 1));
     }
 
     #[test]

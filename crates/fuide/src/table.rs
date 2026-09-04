@@ -1,7 +1,7 @@
 //! Sortable column list: header row with whole-column hit areas, hover/selection rows, painter-drawn
 //! cells (fast for thousands of rows), optional boxed "tag" cells. Data stays in the caller.
 
-use egui::{pos2, vec2, Align2, Color32, Rect, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Color32, Painter, Rect, Sense, Stroke, Ui};
 
 use crate::{theme, widgets};
 
@@ -111,7 +111,21 @@ pub fn table(
     columns: &[Column],
     rows: usize,
     state: &mut TableState,
+    cell: impl FnMut(usize, usize) -> Cell,
+) -> TableResponse {
+    table_decorated(ui, id_salt, columns, rows, state, cell, |_, _, _| {})
+}
+
+/// [`table`] plus a per-row painter: `decorate(painter, row, row_rect)` runs after the row's
+/// cells are drawn (the git client draws its commit graph into an otherwise empty column).
+pub fn table_decorated(
+    ui: &mut Ui,
+    id_salt: &str,
+    columns: &[Column],
+    rows: usize,
+    state: &mut TableState,
     mut cell: impl FnMut(usize, usize) -> Cell,
+    mut decorate: impl FnMut(&Painter, usize, Rect),
 ) -> TableResponse {
     let pal = theme::palette(ui.ctx());
     let ts = theme::type_scale(ui.ctx());
@@ -245,8 +259,11 @@ pub fn table(
                     resp.scroll_to_me(None);
                 }
                 let is_sel = state.selected == Some(row);
-                // rows are addressable by their first cell (the name column)
-                let name = cell(row, 0).text;
+                // rows are addressable by their first non-empty cell (the name column)
+                let name = (0..columns.len())
+                    .map(|c| cell(row, c).text)
+                    .find(|t| !t.is_empty())
+                    .unwrap_or_default();
                 crate::agent::describe(&resp, || {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::SelectableLabel,
@@ -320,6 +337,7 @@ pub fn table(
                         pc.text(pos2(x, cy), anchor, &c.text, font, color);
                     }
                 }
+                decorate(&p, row, r);
                 if resp.double_clicked() {
                     out.double_clicked = Some(row);
                 } else if resp.clicked() {
