@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect x="64" y="64" width="896" height="896" fill="#04100E"/>
+  <rect x="64" y="64" width="896" height="896" fill="none" stroke="#50FFA0" stroke-width="14"/>
+  <rect x="112" y="112" width="800" height="800" fill="none" stroke="#1E8C58" stroke-width="6"/>
+  <!-- commit graph: trunk with one branch merging back -->
+  <line x1="400" y1="240" x2="400" y2="784" stroke="#50FFA0" stroke-width="28"/>
+  <path d="M400 380 C400 470 620 470 620 560 L620 640" fill="none" stroke="#50FFA0" stroke-width="28"/>
+  <path d="M620 640 C620 720 400 720 400 784" fill="none" stroke="#50FFA0" stroke-width="28" opacity="0.6"/>
+  <circle cx="400" cy="260" r="46" fill="#04100E" stroke="#50FFA0" stroke-width="28"/>
+  <circle cx="400" cy="512" r="46" fill="#50FFA0"/>
+  <circle cx="620" cy="600" r="46" fill="#04100E" stroke="#50FFA0" stroke-width="28"/>
+  <circle cx="400" cy="764" r="46" fill="#04100E" stroke="#50FFA0" stroke-width="28"/>
+  <rect x="140" y="140" width="220" height="40" fill="#50FFA0" opacity="0.85"/>
+</svg>
