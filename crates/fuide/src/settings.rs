@@ -35,6 +35,9 @@ pub struct Settings {
     pub chamfer: bool,
     /// Denser type scale ([`TypeScale::COMPACT`] instead of [`TypeScale::NORMAL`]).
     pub compact: bool,
+    /// The window ground lets the desktop show through (the FUI default). Off = the shell body
+    /// is painted opaque; the glow margin and chamfered corners outside it stay see-through.
+    pub transparent: bool,
     /// Layout: height of the app's log panel in logical px, once the user has dragged the
     /// divider (`None` = the app's default). Not shown in the settings window.
     pub log_height: Option<f32>,
@@ -60,6 +63,7 @@ impl Settings {
             palette,
             chamfer: false,
             compact: false,
+            transparent: true,
             log_height: None,
             log_open: true,
             agent: false,
@@ -67,9 +71,17 @@ impl Settings {
         }
     }
 
-    /// Push the settings into the context (palette, corners, type scale).
+    /// Push the settings into the context (palette, transparency, corners, type scale).
     pub fn apply(&self, ctx: &Context) {
-        theme::apply_palette(ctx, self.palette.palette());
+        let palette = self.palette.palette();
+        theme::apply_palette(
+            ctx,
+            if self.transparent {
+                palette
+            } else {
+                palette.opaque()
+            },
+        );
         theme::set_corners(
             ctx,
             if self.chamfer {
@@ -169,6 +181,7 @@ impl Settings {
                 }
                 "chamfer" => s.chamfer = v == "true",
                 "compact" => s.compact = v == "true",
+                "transparent" => s.transparent = v != "false",
                 "log_height" => s.log_height = v.parse().ok().filter(|h: &f32| h.is_finite()),
                 "log_open" => s.log_open = v != "false",
                 "agent" => s.agent = v == "true",
@@ -186,6 +199,7 @@ impl std::fmt::Display for Settings {
         writeln!(f, "palette={}", self.palette.name())?;
         writeln!(f, "chamfer={}", self.chamfer)?;
         writeln!(f, "compact={}", self.compact)?;
+        writeln!(f, "transparent={}", self.transparent)?;
         if let Some(h) = self.log_height {
             writeln!(f, "log_height={h}")?;
         }
@@ -198,7 +212,7 @@ impl std::fmt::Display for Settings {
 
 // -------------------------------------------------------------------------------- window
 
-pub const WINDOW_SIZE: [f32; 2] = [400.0, 600.0];
+pub const WINDOW_SIZE: [f32; 2] = [400.0, 660.0];
 
 /// State shared with the viewport callback (deferred viewports run on their own repaint schedule,
 /// so their closure must be `Send + Sync + 'static`).
@@ -397,6 +411,18 @@ fn settings_body(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
                 s.compact = true;
             }
         });
+        ui.add_space(4.0);
+        widgets::section_label(ui, "Window");
+        ui.horizontal(|ui| {
+            let mut translucent = s.transparent;
+            let mut opaque = !s.transparent;
+            if widgets::toggle_chip(ui, "translucent", &mut translucent).clicked() {
+                s.transparent = true;
+            }
+            if widgets::toggle_chip(ui, "opaque", &mut opaque).clicked() {
+                s.transparent = false;
+            }
+        });
         ui.add_space(8.0);
         let pal = theme::palette(ui.ctx());
         let (fr, _) =
@@ -468,6 +494,7 @@ mod tests {
             palette: PaletteKind::Amber,
             chamfer: true,
             compact: false,
+            transparent: false,
             log_height: Some(180.0),
             log_open: false,
             agent: true,
@@ -483,6 +510,11 @@ mod tests {
             Settings::parse("log_open=nonsense").log_open,
             "only `false` closes it"
         );
+        assert!(
+            Settings::parse("transparent=nonsense").transparent,
+            "only `false` makes the window opaque"
+        );
+        assert!(!Settings::parse("transparent=false").transparent);
     }
 
     #[test]

@@ -69,6 +69,14 @@ impl Palette {
             bg_panel: Color32::from_rgba_unmultiplied(8, 28, 14, 199),
         }
     }
+
+    /// The palette with an opaque window ground (`bg_deep` at full alpha). Panels keep their
+    /// tint, but nothing behind the window shows through any more (`Settings::transparent`).
+    pub fn opaque(mut self) -> Self {
+        let c = self.bg_deep;
+        self.bg_deep = Color32::from_rgb(c.r(), c.g(), c.b());
+        self
+    }
 }
 
 impl Default for Palette {
