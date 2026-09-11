@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fuide", "crates/fuide-3d", "apps/file-manager", "apps/brew", "apps/player", "apps/activity-monitor", "apps/cad", "apps/git"]
+members = ["crates/fuide"]
 
 [workspace.package]
 edition = "2021"
@@ -9,7 +9,6 @@ license = "MIT"
 
 [workspace.dependencies]
 egui = "0.36.1"
-eframe = { version = "0.36.1", default-features = false, features = ["default_fonts", "wgpu"] }
 fuide = { path = "crates/fuide" }
 
 [profile.dev]
