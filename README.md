@@ -5,8 +5,11 @@ Sci-Fi / FUI (Futuristic UI) デザインのアプリを作るための開発環
 | リポジトリ | 中身 |
 |---|---|
 | [kobago/fuide-mac-utils](https://github.com/kobago/fuide-mac-utils) | FUIDE File Manager / Brew / Player / Activity Monitor (macOS ユーティリティ) |
-| [kobago/fuide-cad](https://github.com/kobago/fuide-cad) | FUIDE CAD と 3D ビューポート `fuide-3d` |
+| [kobago/fuide-3d](https://github.com/kobago/fuide-3d) | 3D ビューポート `fuide-3d` (wgpu、ホログラム描画) |
+| [kobago/fuide-cad](https://github.com/kobago/fuide-cad) | FUIDE CAD |
+| [kobago/fuide-eda](https://github.com/kobago/fuide-eda) | FUIDE EDA |
 | [kobago/fuide-git-client](https://github.com/kobago/fuide-git-client) | FUIDE Git |
+| [kobago/fuide-media-downloader](https://github.com/kobago/fuide-media-downloader) | FUIDE Media Downloader |
 
 ```
 crates/fuide/        FUI 部品ライブラリ `fuide` (egui のみ依存)
