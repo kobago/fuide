@@ -1,8 +1,8 @@
 //! Rectangular panel with a title chip that "cuts" the top edge (chamfer optional via `theme::Corners`).
 
 use egui::{
-    pos2, Align2, Color32, Id, Layout, Rect, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo,
-    WidgetType,
+    pos2, vec2, Align2, Color32, Id, Layout, Rect, Sense, Shape, Stroke, Ui, UiBuilder, Vec2,
+    WidgetInfo, WidgetType,
 };
 
 use crate::{geom, theme};
@@ -61,6 +61,37 @@ impl Panel {
         self.show_impl(ui, rect, Some(open), add_contents)
     }
 
+    /// Lay the panel out in the parent's flow: the full available width, and a height that fits
+    /// the contents (plus padding). The title chip straddles the top edge, so leave half a chip
+    /// of room above it (e.g. `ui.add_space(10.0)` before the first panel).
+    pub fn show<R>(self, ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+        // body goes under the contents, but its height is only known after them
+        let body = [ui.painter().add(Shape::Noop), ui.painter().add(Shape::Noop)];
+        let min = ui.cursor().min;
+        let width = ui.available_width();
+        let inner = Rect::from_min_size(
+            min + self.padding,
+            vec2(width - 2.0 * self.padding.x, f32::INFINITY),
+        );
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .id_salt(Id::new(("fuide-panel", &self.title)))
+                .max_rect(inner)
+                .layout(Layout::top_down(egui::Align::Min)),
+        );
+        let out = add_contents(&mut child);
+        let rect = Rect::from_min_size(
+            min,
+            vec2(width, child.min_rect().height() + 2.0 * self.padding.y),
+        );
+        for (idx, shape) in body.into_iter().zip(body_shapes(ui, rect)) {
+            ui.painter().set(idx, shape);
+        }
+        self.chips(ui, rect, None);
+        ui.allocate_rect(rect, Sense::hover());
+        out
+    }
+
     fn show_impl<R>(
         self,
         ui: &mut Ui,
@@ -68,16 +99,34 @@ impl Panel {
         open: Option<bool>,
         add_contents: impl FnOnce(&mut Ui) -> R,
     ) -> (R, bool) {
+        for shape in body_shapes(ui, rect) {
+            ui.painter().add(shape);
+        }
+        let toggled = self.chips(ui, rect, open);
+
+        let inner = Rect::from_min_max(
+            pos2(rect.left() + self.padding.x, rect.top() + self.padding.y),
+            pos2(
+                rect.right() - self.padding.x,
+                rect.bottom() - self.padding.y,
+            ),
+        );
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .id_salt(Id::new(("fuide-panel", &self.title)))
+                .max_rect(inner)
+                .layout(Layout::top_down(egui::Align::Min)),
+        );
+        child.set_clip_rect(inner.intersect(ui.clip_rect()));
+        (add_contents(&mut child), toggled)
+    }
+
+    /// Title chip (a toggle when `open` is `Some`) and the optional tag chip on the top edge.
+    /// Returns whether the title chip was clicked.
+    fn chips(&self, ui: &mut Ui, rect: Rect, open: Option<bool>) -> bool {
         let pal = theme::palette(ui.ctx());
         let c = theme::corners(ui.ctx()).panel;
         let ts = theme::type_scale(ui.ctx());
-
-        geom::fill(ui.painter(), geom::hexagon_tl_br(rect, c), pal.bg_panel);
-        geom::outline(
-            ui.painter(),
-            geom::hexagon_tl_br(rect, c),
-            Stroke::new(1.0, pal.accent_dim.gamma_multiply(0.8)),
-        );
 
         // title chip straddling the top edge
         let inset = CHIP_INSET.max(c);
@@ -126,23 +175,18 @@ impl Panel {
                 ts.label,
             );
         }
-
-        let inner = Rect::from_min_max(
-            pos2(rect.left() + self.padding.x, rect.top() + self.padding.y),
-            pos2(
-                rect.right() - self.padding.x,
-                rect.bottom() - self.padding.y,
-            ),
-        );
-        let mut child = ui.new_child(
-            UiBuilder::new()
-                .id_salt(Id::new(("fuide-panel", &self.title)))
-                .max_rect(inner)
-                .layout(Layout::top_down(egui::Align::Min)),
-        );
-        child.set_clip_rect(inner.intersect(ui.clip_rect()));
-        (add_contents(&mut child), toggled)
+        toggled
     }
+}
+
+/// Panel fill + outline for `rect`.
+fn body_shapes(ui: &Ui, rect: Rect) -> [Shape; 2] {
+    let pal = theme::palette(ui.ctx());
+    let pts = geom::hexagon_tl_br(rect, theme::corners(ui.ctx()).panel);
+    [
+        Shape::convex_polygon(pts.clone(), pal.bg_panel, Stroke::NONE),
+        Shape::closed_line(pts, Stroke::new(1.0, pal.accent_dim.gamma_multiply(0.8))),
+    ]
 }
 
 pub fn chip_width(p: &egui::Painter, text: &str, size: f32) -> f32 {

@@ -212,7 +212,10 @@ impl std::fmt::Display for Settings {
 
 // -------------------------------------------------------------------------------- window
 
-pub const WINDOW_SIZE: [f32; 2] = [400.0, 690.0];
+/// Initial size of the settings window. It is resizable; the body scrolls when it does not fit.
+pub const WINDOW_SIZE: [f32; 2] = [420.0, 740.0];
+/// Smallest size the settings window can be dragged to.
+pub const WINDOW_MIN_SIZE: [f32; 2] = [420.0, 240.0];
 
 /// State shared with the viewport callback (deferred viewports run on their own repaint schedule,
 /// so their closure must be `Send + Sync + 'static`).
@@ -319,14 +322,16 @@ impl SettingsWindow {
                 .with_decorations(false)
                 .with_transparent(true)
                 .with_has_shadow(false)
-                .with_resizable(false)
-                .with_inner_size(WINDOW_SIZE),
+                .with_resizable(true)
+                .with_inner_size(WINDOW_SIZE)
+                .with_min_inner_size(WINDOW_MIN_SIZE),
             move |ui, _class| {
                 let mut sh = shared.lock().unwrap();
                 let before = sh.settings.clone();
                 Shell::new("Settings")
                     .subtitle(&app_name)
                     .tool_window()
+                    .resizable(true)
                     .status_left("ESC CLOSE")
                     .show(ui, |ui| {
                         let status = sh.agent_status.clone();
@@ -355,20 +360,19 @@ impl SettingsWindow {
 }
 
 fn settings_body(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
-    let c = ui.max_rect();
-    let ts = theme::type_scale(ui.ctx());
-    let top = c.top() + 10.0;
-    let palette_h = 12.0 + PaletteKind::ALL.len() as f32 * (ts.row + 2.0 + 3.0) + 18.0 + 6.0;
-    let palette_rect = Rect::from_min_size(pos2(c.left(), top), vec2(c.width(), palette_h));
-    // two chip rows + a status line, like the Look panel
-    let agent_h = 12.0 + 2.0 * (ts.small + 6.0 + 6.0 + ts.row + 4.0) + 8.0 + ts.small + 6.0 + 18.0;
-    let agent_rect = Rect::from_min_max(pos2(c.left(), c.bottom() - agent_h), c.max);
-    let look_rect = Rect::from_min_max(
-        pos2(c.left(), palette_rect.bottom() + 22.0),
-        pos2(c.right(), agent_rect.top() - 22.0),
-    );
+    egui::ScrollArea::vertical()
+        .auto_shrink(false)
+        .show(ui, |ui| settings_panels(ui, s, agent_status));
+}
 
-    Panel::new("Palette").show_rect(ui, palette_rect, |ui| {
+/// The settings panels, stacked top-down; each panel is as tall as its contents.
+fn settings_panels(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
+    let ts = theme::type_scale(ui.ctx());
+    // room for the first panel's title chip, then the gap between panels
+    ui.add_space(10.0);
+    let gap = 22.0 - ui.spacing().item_spacing.y;
+
+    Panel::new("Palette").show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 3.0;
         for kind in PaletteKind::ALL {
             let label = format!("{}  {}", kind.name(), kind.blurb());
@@ -385,8 +389,9 @@ fn settings_body(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
             }
         }
     });
+    ui.add_space(gap);
 
-    Panel::new("Look").show_rect(ui, look_rect, |ui| {
+    Panel::new("Look").show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         widgets::section_label(ui, "Corners");
         ui.horizontal(|ui| {
@@ -435,8 +440,9 @@ fn settings_body(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
             pal.text_dim,
         );
     });
+    ui.add_space(gap);
 
-    Panel::new("Agent").show_rect(ui, agent_rect, |ui| {
+    Panel::new("Agent").show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         widgets::section_label(ui, "MCP server");
         ui.horizontal(|ui| {

@@ -44,6 +44,7 @@ pub struct Shell {
     status_left: String,
     lamps: Vec<StatusLamp>,
     tool_window: bool,
+    resizable: bool,
     settings_button: bool,
 }
 
@@ -74,15 +75,25 @@ impl Shell {
             status_left: String::new(),
             lamps: Vec::new(),
             tool_window: false,
+            resizable: true,
             settings_button: false,
         }
     }
 
-    /// Small secondary window (settings, inspectors): only a close button, no resize handles,
-    /// and no idle animation (it repaints on input only, so it never competes with the main
-    /// window for frames). Use with a child viewport built with `with_resizable(false)`.
+    /// Small secondary window (settings, inspectors): only a close button, no resize handles
+    /// (unless [`Shell::resizable`] after this), and no idle animation (it repaints on input only,
+    /// so it never competes with the main window for frames). Use with a child viewport built
+    /// with `with_resizable(false)`.
     pub fn tool_window(mut self) -> Self {
         self.tool_window = true;
+        self.resizable = false;
+        self
+    }
+
+    /// Edge / corner resize handles (on by default, off for [`Shell::tool_window`]). The viewport
+    /// must be built with `with_resizable(true)`.
+    pub fn resizable(mut self, on: bool) -> Self {
+        self.resizable = on;
         self
     }
 
@@ -384,7 +395,7 @@ impl Shell {
             }
             fx::scanlines(&p, r);
         }
-        if !self.tool_window {
+        if self.resizable {
             resize_handles(ui, full, vp);
         }
         if !self.tool_window {
