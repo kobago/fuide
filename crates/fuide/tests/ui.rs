@@ -197,3 +197,31 @@ fn shell_snapshot_light() {
     h.run_steps(3);
     h.snapshot("shell_light");
 }
+
+#[test]
+fn window_move_and_resize_do_not_leave_egui_dragging() {
+    // The OS takes over the gesture and swallows the release; if egui kept the handle as the
+    // dragged widget, every ScrollArea would ignore the wheel until the next click.
+    for (from, to) in [
+        (pos2(10.0, 200.0), pos2(40.0, 200.0)), // left resize handle
+        (pos2(260.0, 20.0), pos2(300.0, 60.0)), // title bar (window move)
+    ] {
+        let mut h = harness();
+        h.run_steps(2);
+        h.event(egui::Event::PointerMoved(from));
+        h.event(egui::Event::PointerButton {
+            pos: from,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        });
+        h.run_steps(1);
+        for i in 1..=5 {
+            h.event(egui::Event::PointerMoved(
+                from + (to - from) * (i as f32 / 5.0),
+            ));
+            h.run_steps(1);
+        }
+        assert_eq!(h.ctx.dragged_id(), None, "drag from {from:?}");
+    }
+}

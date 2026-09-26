@@ -181,6 +181,7 @@ impl Shell {
         );
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+            end_os_drag(ui);
         }
         if drag.double_clicked() && !self.tool_window {
             let maxed = ui.input(|i| i.viewport().maximized.unwrap_or(false));
@@ -508,6 +509,14 @@ fn resize_handles(ui: &mut Ui, rect: Rect, vp: Id) {
         if resp.drag_started() {
             ui.ctx()
                 .send_viewport_cmd(ViewportCommand::BeginResize(dir));
+            end_os_drag(ui);
         }
     }
+}
+
+/// The OS window manager takes over a move / resize and swallows the button release, so egui
+/// would keep the title bar / handle as the dragged widget until the next click — and a
+/// `ScrollArea` ignores the wheel while anything is dragged. Drop egui's drag right away.
+fn end_os_drag(ui: &Ui) {
+    ui.ctx().stop_dragging();
 }
