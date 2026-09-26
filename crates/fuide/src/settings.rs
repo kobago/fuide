@@ -212,7 +212,7 @@ impl std::fmt::Display for Settings {
 
 // -------------------------------------------------------------------------------- window
 
-pub const WINDOW_SIZE: [f32; 2] = [400.0, 660.0];
+pub const WINDOW_SIZE: [f32; 2] = [400.0, 690.0];
 
 /// State shared with the viewport callback (deferred viewports run on their own repaint schedule,
 /// so their closure must be `Send + Sync + 'static`).
@@ -358,7 +358,7 @@ fn settings_body(ui: &mut Ui, s: &mut Settings, agent_status: &str) {
     let c = ui.max_rect();
     let ts = theme::type_scale(ui.ctx());
     let top = c.top() + 10.0;
-    let palette_h = 12.0 + 3.0 * (ts.row + 2.0 + 3.0) + 18.0 + 6.0;
+    let palette_h = 12.0 + PaletteKind::ALL.len() as f32 * (ts.row + 2.0 + 3.0) + 18.0 + 6.0;
     let palette_rect = Rect::from_min_size(pos2(c.left(), top), vec2(c.width(), palette_h));
     // two chip rows + a status line, like the Look panel
     let agent_h = 12.0 + 2.0 * (ts.small + 6.0 + 6.0 + ts.row + 4.0) + 8.0 + ts.small + 6.0 + 18.0;
