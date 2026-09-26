@@ -28,13 +28,19 @@ struct Demo {
     close_requests: u32,
     /// Show an `ERROR` alert card over everything (input under it is blocked).
     alert: bool,
+    /// Palette to install; `None` = cyan.
+    palette: Option<Palette>,
 }
 
 /// A representative screen: shell with lamps and the gear, one panel with a nav tab group,
 /// a toggle chip, buttons and readouts.
 fn demo(ui: &mut egui::Ui, st: &mut Demo) {
     if !st.installed {
-        theme::install(ui.ctx(), Palette::cyan(), vec![]);
+        theme::install(
+            ui.ctx(),
+            st.palette.clone().unwrap_or_else(Palette::cyan),
+            vec![],
+        );
         st.installed = true;
         return;
     }
@@ -96,10 +102,14 @@ fn demo(ui: &mut egui::Ui, st: &mut Demo) {
 }
 
 fn harness<'a>() -> Harness<'a, Demo> {
+    harness_with(Demo::default())
+}
+
+fn harness_with<'a>(st: Demo) -> Harness<'a, Demo> {
     Harness::builder()
         .with_size(Vec2::new(520.0, 420.0))
         .with_step_dt(1.0 / 60.0)
-        .build_ui_state(demo, Demo::default())
+        .build_ui_state(demo, st)
 }
 
 #[test]
@@ -176,4 +186,14 @@ fn shell_snapshot_cyan() {
     let mut h = harness();
     h.run_steps(3);
     h.snapshot("shell_cyan");
+}
+
+#[test]
+fn shell_snapshot_light() {
+    let mut h = harness_with(Demo {
+        palette: Some(Palette::light()),
+        ..Default::default()
+    });
+    h.run_steps(3);
+    h.snapshot("shell_light");
 }

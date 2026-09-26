@@ -1,6 +1,6 @@
 //! Palette + egui style installation.
 //!
-//! Values come from the FUI design tokens (CYAN / AMBER / GREEN). One app, one palette.
+//! Values come from the FUI design tokens (CYAN / AMBER / GREEN / LIGHT). One app, one palette.
 //! Widgets never hard-code colors: they read the palette back via [`palette`].
 
 use std::sync::Arc;
@@ -70,6 +70,28 @@ impl Palette {
         }
     }
 
+    /// Daylight — ink on paper for bright rooms. Glows become soft tinted halos on the light
+    /// ground; `accent` / status colours stay ≥ 4.5:1 against `bg_deep`.
+    pub fn light() -> Self {
+        Self {
+            accent: Color32::from_rgb(0x00, 0x67, 0x9F),
+            accent_dim: Color32::from_rgb(0x6E, 0x9D, 0xB8),
+            warn: Color32::from_rgb(0xA6, 0x58, 0x00),
+            danger: Color32::from_rgb(0xC4, 0x20, 0x3A),
+            ok: Color32::from_rgb(0x0F, 0x75, 0x43),
+            text: Color32::from_rgb(0x0E, 0x25, 0x33),
+            text_dim: Color32::from_rgb(0x4F, 0x69, 0x78),
+            bg_deep: Color32::from_rgba_unmultiplied(233, 239, 243, 235),
+            bg_panel: Color32::from_rgba_unmultiplied(250, 252, 253, 199),
+        }
+    }
+
+    /// True for a light ground (dark text): egui gets its light visuals and overlays tone down.
+    pub fn is_light(&self) -> bool {
+        let c = self.bg_deep.to_srgba_unmultiplied();
+        (c[0] as u32 * 299 + c[1] as u32 * 587 + c[2] as u32 * 114) / 1000 > 128
+    }
+
     /// The palette with an opaque window ground (`bg_deep` at full alpha). Panels keep their
     /// tint, but nothing behind the window shows through any more (`Settings::transparent`).
     pub fn opaque(mut self) -> Self {
@@ -85,24 +107,26 @@ impl Default for Palette {
     }
 }
 
-/// The three built-in palettes by name. This is what settings files and the settings window
+/// The built-in palettes by name. This is what settings files and the settings window
 /// deal in; [`PaletteKind::palette`] turns it into the concrete colours.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PaletteKind {
     Cyan,
     Amber,
     Green,
+    Light,
 }
 
 impl PaletteKind {
-    pub const ALL: [Self; 3] = [Self::Cyan, Self::Amber, Self::Green];
+    pub const ALL: [Self; 4] = [Self::Cyan, Self::Amber, Self::Green, Self::Light];
 
-    /// Lower-case name used in settings files and logs (`cyan` / `amber` / `green`).
+    /// Lower-case name used in settings files and logs (`cyan` / `amber` / `green` / `light`).
     pub fn name(self) -> &'static str {
         match self {
             Self::Cyan => "cyan",
             Self::Amber => "amber",
             Self::Green => "green",
+            Self::Light => "light",
         }
     }
 
@@ -112,6 +136,7 @@ impl PaletteKind {
             Self::Cyan => "tactical console",
             Self::Amber => "industrial / reactor",
             Self::Green => "phosphor terminal",
+            Self::Light => "daylight / paper",
         }
     }
 
@@ -124,6 +149,7 @@ impl PaletteKind {
             Self::Cyan => Palette::cyan(),
             Self::Amber => Palette::amber(),
             Self::Green => Palette::green(),
+            Self::Light => Palette::light(),
         }
     }
 }
@@ -345,10 +371,15 @@ pub fn install(ctx: &Context, palette: Palette, fallbacks: Vec<FallbackFont>) {
 /// Swap the palette at runtime (fonts untouched).
 pub fn apply_palette(ctx: &Context, palette: Palette) {
     let p = palette.clone();
-    ctx.set_theme(Theme::Dark);
+    let light = p.is_light();
+    ctx.set_theme(if light { Theme::Light } else { Theme::Dark });
     ctx.all_styles_mut(|style| {
         let v = &mut style.visuals;
-        *v = Visuals::dark();
+        *v = if light {
+            Visuals::light()
+        } else {
+            Visuals::dark()
+        };
         v.override_text_color = Some(p.text);
         v.window_fill = Color32::TRANSPARENT;
         v.panel_fill = Color32::TRANSPARENT;

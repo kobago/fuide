@@ -3,7 +3,11 @@
 use egui::{pos2, Color32, Painter, Rect, Stroke};
 
 /// CRT scanlines: 1px black line every 3px, alpha 0.10. Draw last, over everything.
+/// Skipped on a light palette: there is no CRT glow to break up, black lines just read as grime.
 pub fn scanlines(p: &Painter, rect: Rect) {
+    if crate::theme::palette(p.ctx()).is_light() {
+        return;
+    }
     let stroke = Stroke::new(1.0, Color32::from_black_alpha(26));
     let mut y = rect.top();
     while y < rect.bottom() {
